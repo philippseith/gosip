@@ -50,3 +50,7 @@ func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnl
 func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	return ReadDescription(c, slaveIndex, slaveExtension, idn)
 }
+
+func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+	return ReadDataState(c, slaveIndex, slaveExtension, idn)
+}
