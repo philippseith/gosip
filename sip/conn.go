@@ -39,18 +39,18 @@ func (c *Conn) Ping() error {
 	return Ping(c.Conn)
 }
 
-func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, Exception, error) {
 	return ReadEverything(c, slaveIndex, slaveExtension, idn)
 }
 
-func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, Exception, error) {
 	return ReadOnlyData(c, slaveIndex, slaveExtension, idn)
 }
 
-func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, Exception, error) {
 	return ReadDescription(c, slaveIndex, slaveExtension, idn)
 }
 
-func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, Exception, error) {
 	return ReadDataState(c, slaveIndex, slaveExtension, idn)
 }

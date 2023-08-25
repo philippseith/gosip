@@ -2,12 +2,11 @@ package sip
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 )
 
-func ReadDataState(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadDataStateResponse, err error) {
+func ReadDataState(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadDataStateResponse, ex Exception, err error) {
 	request := &ReadDataStateRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
@@ -15,14 +14,8 @@ func ReadDataState(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (r
 	}
 	var header *Header
 	header, err = sendRequestReceiveHeader(conn, request)
-	if err != nil {
-		return response, err
-	}
-	if header.MessageType != ReadDataStateResponseMsgType {
-		return response, fmt.Errorf("invalid connect response messagetype %d", header.MessageType)
-	}
-	err = response.Read(conn)
-	return response, err
+	ex, err = parseHeaderAndResponse(conn, header, err, &response)
+	return response, ex, err
 }
 
 type ReadDataStateRequest struct {

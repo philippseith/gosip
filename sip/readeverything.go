@@ -2,12 +2,11 @@ package sip
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 )
 
-func ReadEverything(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadEverythingResponse, err error) {
+func ReadEverything(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadEverythingResponse, ex Exception, err error) {
 	request := &ReadEverythingRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
@@ -15,14 +14,8 @@ func ReadEverything(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (
 	}
 	var header *Header
 	header, err = sendRequestReceiveHeader(conn, request)
-	if err != nil {
-		return response, err
-	}
-	if header.MessageType != ReadEverythingResponseMsgType {
-		return response, fmt.Errorf("invalid connect response messagetype %d", header.MessageType)
-	}
-	err = response.Read(conn)
-	return response, err
+	ex, err = parseHeaderAndResponse(conn, header, err, &response)
+	return response, ex, err
 }
 
 type ReadEverythingRequest struct {

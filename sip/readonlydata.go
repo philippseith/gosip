@@ -2,12 +2,11 @@ package sip
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 )
 
-func ReadOnlyData(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadOnlyDataResponse, err error) {
+func ReadOnlyData(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadOnlyDataResponse, ex Exception, err error) {
 	request := &ReadOnlyDataRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
@@ -15,14 +14,8 @@ func ReadOnlyData(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (re
 	}
 	var header *Header
 	header, err = sendRequestReceiveHeader(conn, request)
-	if err != nil {
-		return response, err
-	}
-	if header.MessageType != ReadOnlyDataResponseMsgType {
-		return response, fmt.Errorf("invalid connect response messagetype %d", header.MessageType)
-	}
-	err = response.Read(conn)
-	return response, err
+	ex, err = parseHeaderAndResponse(conn, header, err, &response)
+	return response, ex, err
 }
 
 type ReadOnlyDataRequest struct {
