@@ -14,7 +14,7 @@ func TestReadEverything(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	_, err = sip.Connect(conn, 3000, 10000)
+	_, _, err = sip.Connect(conn, 3000, 10000)
 	assert.NoError(t, err)
 
 	resp, ex, err := sip.ReadEverything(conn, 0, 0, 1)
@@ -30,7 +30,7 @@ func TestReadOnlyData(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	_, err = sip.Connect(conn, 3000, 10000)
+	_, _, err = sip.Connect(conn, 3000, 10000)
 	assert.NoError(t, err)
 
 	resp, ex, err := sip.ReadOnlyData(conn, 0, 0, 1)
@@ -46,7 +46,7 @@ func TestReadDescription(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	_, err = sip.Connect(conn, 3000, 10000)
+	_, _, err = sip.Connect(conn, 3000, 10000)
 	assert.NoError(t, err)
 
 	resp, ex, err := sip.ReadDescription(conn, 0, 0, 1)
@@ -62,7 +62,7 @@ func TestReadDataState(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	_, err = sip.Connect(conn, 3000, 10000)
+	_, _, err = sip.Connect(conn, 3000, 10000)
 	assert.NoError(t, err)
 
 	_, ex, err := sip.ReadDataState(conn, 0, 0, 1)

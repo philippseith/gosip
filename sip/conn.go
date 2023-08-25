@@ -7,16 +7,13 @@ type Conn struct {
 	response ConnectResponse
 }
 
-func (c *Conn) Connect(network, address string, busyTimeout, leaseTimeout int) (err error) {
+func (c *Conn) Connect(network, address string, busyTimeout, leaseTimeout int) (ex Exception, err error) {
 	c.Conn, err = net.Dial(network, address)
 	if err != nil {
-		return err
+		return ex, err
 	}
-	c.response, err = Connect(c.Conn, busyTimeout, leaseTimeout)
-	if err != nil {
-		return err
-	}
-	return nil
+	c.response, ex, err = Connect(c.Conn, busyTimeout, leaseTimeout)
+	return ex, err
 }
 
 func (c *Conn) Connected() bool {
