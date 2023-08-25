@@ -7,18 +7,18 @@ import (
 	"net"
 )
 
-func ReadDescription(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadEverythingResponse, err error) {
-	request := &ReadEverythingRequest{
+func ReadDescription(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadDescriptionResponse, err error) {
+	request := &ReadDescriptionRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	}
 	var header *Header
-	header, err = sendRequestReceiveHeader[*ReadEverythingRequest](conn, request)
+	header, err = sendRequestReceiveHeader(conn, request)
 	if err != nil {
 		return response, err
 	}
-	if header.MessageType != ReadEverythingResponseMsgType {
+	if header.MessageType != ReadDescriptionResponseMsgType {
 		return response, fmt.Errorf("invalid connect response messagetype %d", header.MessageType)
 	}
 	err = response.Read(conn)

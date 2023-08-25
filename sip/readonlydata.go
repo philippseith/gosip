@@ -14,7 +14,7 @@ func ReadOnlyData(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (re
 		IDN:            idn,
 	}
 	var header *Header
-	header, err = sendRequestReceiveHeader[*ReadOnlyDataRequest](conn, request)
+	header, err = sendRequestReceiveHeader(conn, request)
 	if err != nil {
 		return response, err
 	}

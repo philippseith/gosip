@@ -14,7 +14,7 @@ func ReadEverything(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (
 		IDN:            idn,
 	}
 	var header *Header
-	header, err = sendRequestReceiveHeader[*ReadEverythingRequest](conn, request)
+	header, err = sendRequestReceiveHeader(conn, request)
 	if err != nil {
 		return response, err
 	}
