@@ -38,3 +38,7 @@ func (c *Conn) SupportedMessageTypes() []uint32 {
 func (c *Conn) Ping() error {
 	return Ping(c.Conn)
 }
+
+func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (response ReadEverythingResponse, err error) {
+	return ReadEverything(c, slaveIndex, slaveExtension, idn)
+}
