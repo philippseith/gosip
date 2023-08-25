@@ -1,22 +1,17 @@
 package sip
 
 import (
-	"fmt"
 	"io"
 	"net"
 )
 
-func Ping(conn net.Conn) (err error) {
+func Ping(conn net.Conn) (ex Exception, err error) {
 	request := &PingRequest{}
 	var header *Header
-	header, err = sendRequestReceiveHeader[*PingRequest](conn, request)
-	if err != nil {
-		return err
-	}
-	if header.MessageType != PingResponseMsgType {
-		return fmt.Errorf("invalid connect response messagetype %d", header.MessageType)
-	}
-	return nil
+	header, err = sendRequestReceiveHeader(conn, request)
+	var response PingResponse
+	ex, err = parseHeaderAndResponse(conn, header, err, &response)
+	return ex, err
 }
 
 type PingRequest struct{}

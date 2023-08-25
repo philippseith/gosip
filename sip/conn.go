@@ -35,7 +35,7 @@ func (c *Conn) SupportedMessageTypes() []uint32 {
 	return c.response.MessageTypes
 }
 
-func (c *Conn) Ping() error {
+func (c *Conn) Ping() (Exception, error) {
 	return Ping(c.Conn)
 }
 
@@ -53,4 +53,8 @@ func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (Read
 
 func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, Exception, error) {
 	return ReadDataState(c, slaveIndex, slaveExtension, idn)
+}
+
+func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) (ex Exception, err error) {
+	return WriteData(c, slaveIndex, slaveExtension, idn, data)
 }
