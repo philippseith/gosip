@@ -3,20 +3,7 @@ package sip
 import (
 	"encoding/binary"
 	"io"
-	"net"
 )
-
-func ReadEverything(conn net.Conn, slaveIndex, slaveExtension int, idn uint32) (response ReadEverythingResponse, ex Exception, err error) {
-	request := &ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	}
-	var header *Header
-	header, err = sendRequestReceiveHeader(conn, request)
-	ex, err = parseHeaderAndResponse(conn, header, err, &response)
-	return response, ex, err
-}
 
 type ReadEverythingRequest struct {
 	SlaveIndex     uint16

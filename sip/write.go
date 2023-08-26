@@ -3,25 +3,7 @@ package sip
 import (
 	"encoding/binary"
 	"io"
-	"net"
 )
-
-func WriteData(conn net.Conn, slaveIndex, slaveExtension int, idn uint32, data []byte) (ex Exception, err error) {
-	request := &WriteDataRequest{
-		writeDataRequest: writeDataRequest{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
-			IDN:            idn,
-			DataLength:     uint32(len(data)),
-		},
-		Data: data,
-	}
-	var header *Header
-	header, err = sendRequestReceiveHeader(conn, request)
-	var response WriteDataResponse
-	ex, err = parseHeaderAndResponse(conn, header, err, &response)
-	return ex, err
-}
 
 type WriteDataRequest struct {
 	writeDataRequest

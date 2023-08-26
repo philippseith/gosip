@@ -3,22 +3,7 @@ package sip
 import (
 	"encoding/binary"
 	"io"
-	"net"
 )
-
-// Connect connect to a server over a connection with suggested timeouts for busy and lease.
-// The used timeouts are returned in the response.
-func Connect(conn net.Conn, busyTimeout, leaseTimeout int) (response ConnectResponse, ex Exception, err error) {
-	request := &ConnectRequest{
-		Version:      1,
-		BusyTimeout:  uint32(busyTimeout),
-		LeaseTimeout: uint32(leaseTimeout),
-	}
-	var header *Header
-	header, err = sendRequestReceiveHeader(conn, request)
-	ex, err = parseHeaderAndResponse(conn, header, err, &response)
-	return response, ex, err
-}
 
 // ConnectRequest, MessageType 63
 // In order to initiate a S/IP connection, the client sends a ConnectRequest PDU to the server.
