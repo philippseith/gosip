@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"sync"
 	"testing"
 
 	"github.com/philippseith/gosip/sip"
@@ -123,11 +124,17 @@ func TestReadS17(t *testing.T) {
 	assert.NoError(t, binary.Read(bytes.NewReader(resp.Data), binary.LittleEndian, idns))
 
 	log.Print("start")
-	for _, idn := range idns {
-		//log.Print("read ", idn)
-		_, ex, err = conn.ReadEverything(0, 0, idn)
-		assert.NoError(t, err)
-		assert.Equal(t, uint16(0), ex.CommomErrorCode)
+	var wg sync.WaitGroup
+	wg.Add(len(idns))
+	for _, i := range idns {
+		idn := i
+		go func() {
+			_, ex, err = conn.ReadEverything(0, 0, idn)
+			assert.NoError(t, err)
+			assert.Equal(t, uint16(0), ex.CommomErrorCode)
+			wg.Done()
+		}()
 	}
+	wg.Wait()
 	log.Print("stop")
 }
