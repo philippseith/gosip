@@ -2,6 +2,7 @@ package sip
 
 import (
 	"net"
+	"time"
 )
 
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
@@ -15,6 +16,7 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 	if err != nil {
 		return nil, err
 	}
+	c.reader = deadlineReader{Conn: c.Conn}
 	c.reqCh = make(chan request)
 	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 	go c.sendloop()
@@ -46,6 +48,7 @@ func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) 
 		defer c.mxCR.Unlock()
 
 		c.connectResponse = *respPdu
+		c.reader.timeout = time.Millisecond * time.Duration(respPdu.BusyTimeout)
 	}()
 	return ex, err
 }

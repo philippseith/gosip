@@ -13,9 +13,12 @@ import (
 
 func TestReadEverything(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	ex, err := conn.Connect(3000, 10000)
 	assert.NoError(t, err)
@@ -29,9 +32,12 @@ func TestReadEverything(t *testing.T) {
 
 func TestReadOnlyData(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	ex, err := conn.Connect(3000, 10000)
 	assert.NoError(t, err)
@@ -45,9 +51,12 @@ func TestReadOnlyData(t *testing.T) {
 
 func TestReadDescription(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	ex, err := conn.Connect(3000, 10000)
 	assert.NoError(t, err)
@@ -61,9 +70,12 @@ func TestReadDescription(t *testing.T) {
 
 func TestReadDataState(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	ex, err := conn.Connect(3000, 10000)
 	assert.NoError(t, err)
@@ -76,9 +88,12 @@ func TestReadDataState(t *testing.T) {
 
 func BenchmarkReadParallel(t *testing.B) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	_, err = conn.Connect(3000, 10000)
 	assert.NoError(t, err)
@@ -107,9 +122,12 @@ func BenchmarkReadParallel(t *testing.B) {
 
 func TestReadS192(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
-	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
 
 	_, err = conn.Connect(3000, 10000)
 	assert.NoError(t, err)

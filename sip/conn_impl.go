@@ -11,6 +11,8 @@ import (
 
 type Conn struct {
 	net.Conn
+	reader deadlineReader
+
 	mxRecv sync.Mutex
 
 	transactionId uint32
@@ -86,7 +88,7 @@ func (c *Conn) receive() error {
 	defer c.mxRecv.Unlock()
 
 	h := &Header{}
-	err := h.Read(c.Conn)
+	err := h.Read(&c.reader)
 	if h.MessageType == 0 {
 		return nil
 	}
@@ -109,7 +111,7 @@ func (c *Conn) receive() error {
 					"invalid response message type %d. Expected: %d. TransactionId: %d",
 					h.MessageType, pdu.MessageType(), h.TransactionID)
 			}
-			return ex, pdu.Read(c.Conn)
+			return ex, pdu.Read(&c.reader)
 		}
 	}
 	c.checkoutResponseChan(h.TransactionID) <- respFunc
@@ -119,7 +121,7 @@ func (c *Conn) receive() error {
 
 func (c *Conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) (Exception, error), error) {
 	ex := Exception{}
-	if err := ex.Read(c.Conn); err != nil {
+	if err := ex.Read(&c.reader); err != nil {
 		return nil, err
 	}
 	return func(PDU) (Exception, error) {
