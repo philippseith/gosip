@@ -105,7 +105,7 @@ func BenchmarkReadParallel(t *testing.B) {
 	assert.Equal(t, b1, b2)
 }
 
-func TestReadS17(t *testing.T) {
+func TestReadS192(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35021")
 	defer func() { _ = conn.Close() }()
 
@@ -114,7 +114,7 @@ func TestReadS17(t *testing.T) {
 	_, err = conn.Connect(3000, 10000)
 	assert.NoError(t, err)
 
-	resp, ex, err := conn.ReadOnlyData(0, 0, 17)
+	resp, ex, err := conn.ReadOnlyData(0, 0, 192)
 
 	assert.NoError(t, err)
 	assert.Equal(t, uint16(0), ex.CommomErrorCode)

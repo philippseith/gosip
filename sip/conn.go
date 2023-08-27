@@ -4,17 +4,31 @@ import (
 	"net"
 )
 
-func Dial(network, address string) (c *Conn, err error) {
+func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
 	c = &Conn{}
+	for _, option := range options {
+		if err := option(c); err != nil {
+			return nil, err
+		}
+	}
 	c.Conn, err = net.Dial(network, address)
 	if err != nil {
-		return c, err
+		return nil, err
 	}
 	c.reqCh = make(chan request)
 	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 	go c.sendloop()
 	go c.receiveLoop()
 	return c, err
+}
+
+func ConcurrentTransactions(ct uint) func(c *Conn) error {
+	return func(c *Conn) error {
+		if ct > 0 {
+			c.concurrentCh = make(chan struct{}, ct)
+		}
+		return nil
+	}
 }
 
 func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) {

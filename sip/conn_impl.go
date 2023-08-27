@@ -3,6 +3,7 @@ package sip
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,8 @@ type Conn struct {
 
 	transactionId uint32
 
-	reqCh chan request
+	reqCh        chan request
+	concurrentCh chan struct{}
 
 	respChans map[uint32]chan func(PDU) (Exception, error)
 	mxRC      sync.Mutex
@@ -30,8 +32,13 @@ type request struct {
 
 func (c *Conn) sendloop() {
 	for req := range c.reqCh {
+		if c.concurrentCh != nil {
+			c.concurrentCh <- struct{}{}
+		}
 		if err := c.send(req); err != nil {
-			// decide if connection was lost
+			c.cancelAllRequests(err)
+			log.Printf("breaking sendLoop: %v", err)
+			break
 		}
 	}
 }
@@ -39,9 +46,25 @@ func (c *Conn) sendloop() {
 func (c *Conn) receiveLoop() {
 	for {
 		if err := c.receive(); err != nil {
-			// decide if connection was lost
+			c.cancelAllRequests(err)
+			log.Printf("breaking receiveLoop: %v", err)
+			break
+		}
+		if c.concurrentCh != nil {
+			<-c.concurrentCh
 		}
 	}
+}
+
+func (c *Conn) cancelAllRequests(err error) {
+	errFunc := func(PDU) (Exception, error) {
+		return Exception{}, err
+	}
+	for _, ch := range c.respChans {
+		cch := ch
+		go func() { cch <- errFunc }()
+	}
+	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 }
 
 func (c *Conn) send(req request) error {
