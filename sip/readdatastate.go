@@ -28,11 +28,11 @@ type ReadDataStateResponse struct {
 }
 
 func (r *ReadDataStateResponse) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, &r)
+	return binary.Read(reader, binary.LittleEndian, r)
 }
 
 func (r *ReadDataStateResponse) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, r)
+	return binary.Write(writer, binary.LittleEndian, *r)
 }
 
 func (r *ReadDataStateResponse) MessageType() uint32 {

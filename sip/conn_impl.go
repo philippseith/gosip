@@ -3,12 +3,29 @@ package sip
 import (
 	"fmt"
 	"io"
+	"net"
+	"sync"
 	"sync/atomic"
 )
 
+type Conn struct {
+	net.Conn
+	mxRecv sync.Mutex
+
+	transactionId uint32
+
+	reqCh chan request
+
+	respChans map[uint32]chan func(PDU) (Exception, error)
+	mxRC      sync.Mutex
+
+	connectResponse ConnectResponse
+	mxCR            sync.RWMutex
+}
+
 type request struct {
 	write func(conn io.Writer) (transactionId uint32, err error)
-	ch    chan chan func(PDU) (Exception, error)
+	ch    chan func(PDU) (Exception, error)
 }
 
 func (c *Conn) sendloop() {
@@ -28,12 +45,7 @@ func (c *Conn) receiveLoop() {
 }
 
 func (c *Conn) send(req request) error {
-	tId, err := func() (uint32, error) {
-		c.mxConn.Lock()
-		defer c.mxConn.Unlock()
-
-		return req.write(c.Conn)
-	}()
+	tId, err := req.write(c.Conn)
 	if err != nil {
 		return err
 	}
@@ -41,27 +53,33 @@ func (c *Conn) send(req request) error {
 		c.mxRC.Lock()
 		defer c.mxRC.Unlock()
 
-		c.respChans[tId] = make(chan func(PDU) (Exception, error), 1)
+		c.respChans[tId] = req.ch
 	}()
 	return nil
 }
 
 func (c *Conn) receive() error {
+	c.mxRecv.Lock()
+	defer c.mxRecv.Unlock()
+
 	h := &Header{}
 	err := h.Read(c.Conn)
+	if h.MessageType == 0 {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	var respFunc func(PDU) (Exception, error)
+	respFuncExecuted := make(chan struct{})
 	if h.MessageType == ExceptionMsgType {
-		respFunc, err = c.newExceptionResponse()
+		respFunc, err = c.newExceptionResponse(respFuncExecuted)
 		if err != nil {
 			return err
 		}
 	} else {
 		respFunc = func(pdu PDU) (ex Exception, err error) {
-			c.mxConn.Lock()
-			defer c.mxConn.Unlock()
+			defer close(respFuncExecuted)
 
 			if h.MessageType != pdu.MessageType() {
 				return ex, fmt.Errorf(
@@ -71,23 +89,19 @@ func (c *Conn) receive() error {
 			return ex, pdu.Read(c.Conn)
 		}
 	}
-	ch := c.checkoutResponseChan(h.TransactionID)
-	ch <- respFunc
-	close(ch)
+	c.checkoutResponseChan(h.TransactionID) <- respFunc
+	<-respFuncExecuted
 	return nil
 }
 
-func (c *Conn) newExceptionResponse() (func(PDU) (Exception, error), error) {
+func (c *Conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) (Exception, error), error) {
 	ex := Exception{}
-	if err := func() error {
-		c.mxConn.Lock()
-		defer c.mxConn.Unlock()
-
-		return ex.Read(c.Conn)
-	}(); err != nil {
+	if err := ex.Read(c.Conn); err != nil {
 		return nil, err
 	}
 	return func(PDU) (Exception, error) {
+		defer close(respFuncExecuted)
+
 		return ex, nil
 	}, nil
 }
@@ -118,12 +132,12 @@ func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) (Exception, error) {
 			}
 			return transactionId, pdu.Write(conn)
 		},
-		ch: make(chan chan func(PDU) (Exception, error)),
+		ch: make(chan func(PDU) (Exception, error)),
 	}
+	defer close(req.ch)
 	// Send request job into the queue
 	c.reqCh <- req
-	// get the channel were the function for reading the response comes in
-	respCh := <-req.ch
-	// wait for the function to read the response
-	return <-respCh
+	// wait for the function by which we can read the response
+	readResp := <-req.ch
+	return readResp
 }

@@ -2,23 +2,7 @@ package sip
 
 import (
 	"net"
-	"sync"
 )
-
-type Conn struct {
-	net.Conn
-	mxConn sync.Mutex
-
-	transactionId uint32
-
-	reqCh chan request
-
-	respChans map[uint32]chan func(PDU) (Exception, error)
-	mxRC      sync.Mutex
-
-	connectResponse ConnectResponse
-	mxCR            sync.RWMutex
-}
 
 func Dial(network, address string) (c *Conn, err error) {
 	c = &Conn{}

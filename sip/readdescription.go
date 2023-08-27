@@ -31,7 +31,6 @@ type ReadDescriptionResponse struct {
 
 type readDescriptionResponse struct {
 	ValidElements uint16
-	DataState     uint16
 	NameLength    uint16
 	Attribute     uint32
 	UnitLength    uint16

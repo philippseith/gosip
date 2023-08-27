@@ -16,7 +16,7 @@ func TestConnect(t *testing.T) {
 	ex, err := conn.Connect(3000, 10000)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 0, ex.CommomErrorCode)
+	assert.Equal(t, uint16(0), ex.CommomErrorCode)
 
 	assert.NotEmpty(t, conn.MessageTypes())
 }
@@ -29,10 +29,10 @@ func TestPing(t *testing.T) {
 
 	ex, err := conn.Connect(3000, 10000)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, ex.CommomErrorCode)
+	assert.Equal(t, uint16(0), ex.CommomErrorCode)
 
 	ex, err = conn.Ping()
 
 	assert.NoError(t, err)
-	assert.Equal(t, 0, ex.CommomErrorCode)
+	assert.Equal(t, uint16(0), ex.CommomErrorCode)
 }
