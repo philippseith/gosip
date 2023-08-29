@@ -6,7 +6,7 @@ import (
 )
 
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
-	c = &Conn{}
+	c = &Conn{timeoutReader: &timeoutReader{}}
 	for _, option := range options {
 		if err := option(c); err != nil {
 			return nil, err
@@ -16,7 +16,6 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 	if err != nil {
 		return nil, err
 	}
-	c.reader = deadlineReader{Conn: c.Conn}
 	c.reqCh = make(chan request)
 	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 	go c.sendloop()
@@ -34,6 +33,8 @@ func ConcurrentTransactions(ct uint) func(c *Conn) error {
 }
 
 func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) {
+	// TODO detect network latency (Ping?) and add it to the busy timeout
+	c.timeoutReader.SetTimeout(time.Duration(busyTimeout) * time.Millisecond)
 	readResponse := c.sendWaitForResponse(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  uint32(busyTimeout),
@@ -48,7 +49,7 @@ func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) 
 		defer c.mxCR.Unlock()
 
 		c.connectResponse = *respPdu
-		c.reader.timeout = time.Millisecond * time.Duration(respPdu.BusyTimeout)
+		c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
 	}()
 	return ex, err
 }
