@@ -16,6 +16,7 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 	if err != nil {
 		return nil, err
 	}
+	c.timeoutReader.reader = c.Conn
 	c.reqCh = make(chan request)
 	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 	go c.sendloop()

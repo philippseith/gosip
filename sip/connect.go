@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// ConnectRequest, MessageType 63
+// ConnectRequest MessageType 63
 // In order to initiate a S/IP connection, the client sends a ConnectRequest PDU to the server.
 // This request contains the desired S/IP version number and desired timeout values for the connection.
 type ConnectRequest struct {
