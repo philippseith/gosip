@@ -24,17 +24,9 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 	return c, err
 }
 
-func ConcurrentTransactions(ct uint) func(c *Conn) error {
-	return func(c *Conn) error {
-		if ct > 0 {
-			c.concurrentCh = make(chan struct{}, ct)
-		}
-		return nil
-	}
-}
-
 func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) {
-	// TODO detect network latency (Ping?) and add it to the busy timeout
+	// TODO detect network latency and add it to the busy timeout
+	// TODO Send Ping KeepAlive
 	c.timeoutReader.SetTimeout(time.Duration(busyTimeout) * time.Millisecond)
 	readResponse := c.sendWaitForResponse(&ConnectRequest{
 		Version:      1,
