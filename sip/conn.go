@@ -21,7 +21,7 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
 	go c.sendloop()
 	go c.receiveLoop()
-	return c, err
+	return c, nil
 }
 
 func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) {
