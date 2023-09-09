@@ -36,7 +36,7 @@ func (w *WriteDataRequest) Write(writer io.Writer) error {
 	return nil
 }
 
-func (r *WriteDataRequest) MessageType() uint32 {
+func (w *WriteDataRequest) MessageType() uint32 {
 	return WriteDataRequestMsgType
 }
 

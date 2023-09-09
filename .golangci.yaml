@@ -1,0 +1,24 @@
+run:
+  tests: false
+  skip-dirs:
+    - rx_test
+linters:
+  enable:
+    - asasalint
+    - contextcheck
+    - cyclop
+    - dupl
+    - errorlint
+    - exportloopref
+    - funlen
+    - gocritic
+    - gocognit
+    - gocyclo
+    - gosec
+    - govet
+    - megacheck
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars

@@ -24,6 +24,10 @@ func (c *Exception) MessageType() uint32 {
 	return ExceptionMsgType
 }
 
+func (c Exception) Error() string {
+	return "" // TODO
+}
+
 // the server is not able to serve a TCP based S/IP connection. See TCP based communication initialization for further details.
 const ConnectionError = uint16(1)
 
