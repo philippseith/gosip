@@ -2,6 +2,7 @@ package sip
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -25,7 +26,26 @@ func (c *Exception) MessageType() uint32 {
 }
 
 func (c Exception) Error() string {
-	return "" // TODO
+	var commonError string
+	switch c.CommomErrorCode {
+	case ConnectionError:
+		commonError = "ConnectionError"
+	case TimeoutError:
+		commonError = "TimeoutError"
+	case UnknownMessageTypeError:
+		commonError = "UnknownMessageTypeError"
+	case ServiceSpecificError:
+		commonError = "ServiceSpecificError"
+	case PduToLargeError:
+		commonError = "PduToLargeError"
+	case PduProtocolMismatchError:
+		commonError = "PduProtocolMismatchError"
+	}
+	return fmt.Sprintf("%s: CommonErrorCode: %s, SpecificErrorCode: %d", Error, commonError, c.SpecificErrorCode)
+}
+
+func (c Exception) Unwrap() error {
+	return Error
 }
 
 // the server is not able to serve a TCP based S/IP connection. See TCP based communication initialization for further details.
@@ -48,4 +68,4 @@ const ServiceSpecificError = uint16(4)
 const PduToLargeError = uint16(5)
 
 // malformed PDU e.g. received UDP datagram does not correspond to the expected PDU size
-const PduProtocolMismatchError = uint16(5)
+const PduProtocolMismatchError = uint16(6)
