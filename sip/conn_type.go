@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type Conn struct {
@@ -18,10 +19,12 @@ type Conn struct {
 	concurrentCh chan struct{}
 
 	respChans map[uint32]chan func(PDU) error
-	mxRC      sync.Mutex
+	mxRC      sync.RWMutex
 
 	userBusyTimeout  uint32
 	userLeaseTimeout uint32
+
+	busyTimer *time.Timer
 
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex

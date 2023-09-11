@@ -1,5 +1,7 @@
 package sip
 
+import "time"
+
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
 	c = &Conn{
 		timeoutReader:    &timeoutReader{},
@@ -40,18 +42,18 @@ func (c *Conn) Connected() bool {
 	return c.connectResponse.Version != 0
 }
 
-func (c *Conn) BusyTimeout() int {
+func (c *Conn) BusyTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return int(c.connectResponse.BusyTimeout)
+	return time.Millisecond * time.Duration(c.connectResponse.BusyTimeout)
 }
 
-func (c *Conn) LeaseTimeout() int {
+func (c *Conn) LeaseTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return int(c.connectResponse.LeaseTimeout)
+	return time.Millisecond * time.Duration(c.connectResponse.LeaseTimeout)
 }
 
 func (c *Conn) MessageTypes() []uint32 {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync/atomic"
+	"time"
 )
 
 func (c *Conn) reqChOut() <-chan request {
@@ -52,6 +53,15 @@ loop:
 				cancel(err)
 				break loop
 			}
+			// in case there is no busy timer, it has to be started now
+			if func() bool {
+				c.mxState.RLock()
+				defer c.mxState.RUnlock()
+
+				return c.busyTimer == nil
+			}() {
+				c.startBusyTimer()
+			}
 		}
 	}
 }
@@ -70,15 +80,61 @@ loop:
 				cancel(err)
 				break loop
 			}
+			// Restart or stop busy timer
+			c.restartOrStopBusyTimer()
+			// decrease the number of currently running req/resp pairs
 			if c.concurrentCh != nil {
-				// decrease the number of currently running req/resp pairs
 				<-c.concurrentCh
 			}
 		}
 	}
 }
 
+// restartOrStopBusyTimer runs after a response was received.
+// It restarts the busy timer if there are open requests.
+func (c *Conn) restartOrStopBusyTimer() {
+	// current timer hast to be stopped in any case
+	func() {
+		c.mxState.Lock()
+		defer c.mxState.Unlock()
+
+		if c.busyTimer != nil && !c.busyTimer.Stop() {
+			<-c.busyTimer.C
+		}
+		c.busyTimer = nil
+	}()
+	// If there are open requests, the timer has to be started
+	if c.openRequests() > 0 {
+		c.startBusyTimer()
+	}
+}
+
+func (c *Conn) startBusyTimer() {
+	func() {
+		c.mxState.Lock()
+		defer c.mxState.Unlock()
+
+		c.busyTimer = time.NewTimer(c.BusyTimeout())
+		go func(busyCh <-chan time.Time) {
+			<-busyCh
+			log.Print("Busy Timeout elapsed")
+			c.Close() // TODO really close or close only conn and cleanup open requests?
+		}(c.busyTimer.C)
+	}()
+
+}
+
+func (c *Conn) openRequests() int {
+	c.mxRC.RLock()
+	defer c.mxRC.RUnlock()
+
+	return len(c.respChans)
+}
+
 func (c *Conn) cancelAllRequests(err error) {
+	c.mxRC.Lock()
+	defer c.mxRC.Unlock()
+
 	errFunc := func(PDU) error {
 		return err
 	}
@@ -117,12 +173,16 @@ func (c *Conn) receive() error {
 	}
 	var respFunc func(PDU) error
 	respFuncExecuted := make(chan struct{})
-	if h.MessageType == ExceptionMsgType {
+	switch h.MessageType {
+	case BusyResponseMsgType:
+		// Busy PDU is empty, do nothing
+		return nil
+	case ExceptionMsgType:
 		respFunc, err = c.newExceptionResponse(respFuncExecuted)
 		if err != nil {
 			return err
 		}
-	} else {
+	default:
 		respFunc = func(pdu PDU) error {
 			defer close(respFuncExecuted)
 
