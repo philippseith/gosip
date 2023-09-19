@@ -60,7 +60,7 @@ loop:
 
 				return c.busyTimer == nil
 			}() {
-				c.startBusyTimer()
+				c.startBusyTimer(cancel)
 			}
 		}
 	}
@@ -81,7 +81,7 @@ loop:
 				break loop
 			}
 			// Restart or stop busy timer
-			c.restartOrStopBusyTimer()
+			c.restartOrStopBusyTimer(cancel)
 			// decrease the number of currently running req/resp pairs
 			if c.concurrentCh != nil {
 				<-c.concurrentCh
@@ -92,7 +92,7 @@ loop:
 
 // restartOrStopBusyTimer runs after a response was received.
 // It restarts the busy timer if there are open requests.
-func (c *Conn) restartOrStopBusyTimer() {
+func (c *Conn) restartOrStopBusyTimer(cancel context.CancelCauseFunc) {
 	// current timer hast to be stopped in any case
 	func() {
 		c.mxState.Lock()
@@ -105,21 +105,22 @@ func (c *Conn) restartOrStopBusyTimer() {
 	}()
 	// If there are open requests, the timer has to be started
 	if c.openRequests() > 0 {
-		c.startBusyTimer()
+		c.startBusyTimer(cancel)
 	}
 }
 
-func (c *Conn) startBusyTimer() {
+func (c *Conn) startBusyTimer(cancel context.CancelCauseFunc) {
 	func() {
 		c.mxState.Lock()
 		defer c.mxState.Unlock()
 
 		c.busyTimer = time.NewTimer(c.BusyTimeout())
-		go func(busyCh <-chan time.Time) {
+		go func(busyCh <-chan time.Time, cancel context.CancelCauseFunc) {
 			<-busyCh
 			log.Print("Busy Timeout elapsed")
-			c.Close() // TODO really close or close only conn and cleanup open requests?
-		}(c.busyTimer.C)
+			// cancel the send and the receive loop
+			cancel(ErrorTimeout)
+		}(c.busyTimer.C, cancel)
 	}()
 
 }
@@ -232,6 +233,7 @@ func (c *Conn) writeHeader(conn io.Writer, pdu PDU) (transactiondID uint32, err 
 func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
+			// TODO wrap writer to merge header and pdu in one package
 			transactionId, err = c.writeHeader(conn, pdu)
 			if err != nil {
 				return transactionId, err

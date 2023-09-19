@@ -12,7 +12,9 @@ func (c *Conn) connLoop(network, address string) chan error {
 	ctx, c.cancel = context.WithCancelCause(context.Background())
 
 	ch := make(chan error, 1)
-	go func() {
+	go func(ch chan error) {
+		defer close(ch)
+
 		inital := true
 	loop:
 		for {
@@ -25,7 +27,6 @@ func (c *Conn) connLoop(network, address string) chan error {
 				if inital {
 					inital = false
 					ch <- err
-					close(ch)
 				}
 				if err != nil {
 					log.Printf("breaking connLoop: %v", err)
@@ -35,8 +36,9 @@ func (c *Conn) connLoop(network, address string) chan error {
 				<-sendRecvCtx.Done()
 			}
 		}
+		ch <- c.cleanUp()
 
-	}()
+	}(ch)
 	return ch
 }
 

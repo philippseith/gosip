@@ -8,7 +8,7 @@ import (
 )
 
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", "127.0.0.1:35021")
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)

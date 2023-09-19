@@ -13,6 +13,9 @@ func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err
 			return nil, err
 		}
 	}
+	// we use userBusy as BusyTimeout until the server responded
+	c.connectResponse.BusyTimeout = c.userBusyTimeout
+
 	err = <-c.connLoop(network, address)
 	return c, err
 }
@@ -21,18 +24,23 @@ func (c *Conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
-	func() {
-		c.mxState.Lock()
-		defer c.mxState.Unlock()
+	return c.cleanUp()
+}
 
+func (c *Conn) cleanUp() (err error) {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	if c.reqCh != nil {
 		close(c.reqCh)
 		c.reqCh = nil
-	}()
+	}
 
 	if c.Conn != nil {
-		return c.Conn.Close()
+		err = c.Conn.Close()
+		c.Conn = nil
 	}
-	return nil
+	return err
 }
 
 func (c *Conn) Connected() bool {
