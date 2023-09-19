@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -233,12 +234,15 @@ func (c *Conn) writeHeader(conn io.Writer, pdu PDU) (transactiondID uint32, err 
 func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
-			// TODO wrap writer to merge header and pdu in one package
-			transactionId, err = c.writeHeader(conn, pdu)
+			// Make sure header and PDU are sent in one package if possible
+			mtuWriter := bufio.NewWriterSize(conn, 1500) // Ethernet MTU is 1500
+			transactionId, err = c.writeHeader(mtuWriter, pdu)
 			if err != nil {
 				return transactionId, err
 			}
-			return transactionId, pdu.Write(conn)
+			err = pdu.Write(mtuWriter)
+			mtuWriter.Flush()
+			return transactionId, err
 		},
 		ch: make(chan func(PDU) error),
 	}
