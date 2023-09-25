@@ -1,6 +1,7 @@
 package sip_test
 
 import (
+	"log"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ func TestBusy(t *testing.T) {
 
 	assert.NoError(t, err)
 
+	log.Print("Ping1")
 	err = conn.Ping()
 	assert.NoError(t, err)
 
@@ -21,7 +23,8 @@ func TestBusy(t *testing.T) {
 	<-time.After(conn.BusyTimeout() + 100*time.Millisecond)
 
 	// The connection should be closed now and Ping should err
+	log.Print("Ping2")
 	err = conn.Ping()
 	assert.Error(t, err)
-	// TODO is this the wanted behavior?
+
 }

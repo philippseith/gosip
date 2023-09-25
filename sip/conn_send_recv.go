@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"sync/atomic"
-	"time"
 )
 
 func (c *Conn) reqChOut() <-chan request {
@@ -45,7 +44,7 @@ loop:
 				break loop
 			}
 			if c.concurrentCh != nil {
-				// Check if we could send. This blocks when no more concurrent requests are allowd
+				// Check if we could send. This blocks when no more concurrent requests are allowed
 				c.concurrentCh <- struct{}{}
 			}
 			if err := c.send(req); err != nil {
@@ -53,15 +52,6 @@ loop:
 				log.Printf("breaking sendLoop: %v", err)
 				cancel(err)
 				break loop
-			}
-			// in case there is no busy timer, it has to be started now
-			if func() bool {
-				c.mxState.RLock()
-				defer c.mxState.RUnlock()
-
-				return c.busyTimer == nil
-			}() {
-				c.startBusyTimer(cancel)
 			}
 		}
 	}
@@ -75,62 +65,19 @@ loop:
 			log.Printf("breaking receiveLoop: %v", context.Cause(ctx))
 			break loop
 		default:
+			// Wait for at least one
 			if err := c.receive(); err != nil {
 				c.cancelAllRequests(err)
 				log.Printf("breaking receiveLoop: %v", err)
 				cancel(err)
 				break loop
 			}
-			// Restart or stop busy timer
-			c.restartOrStopBusyTimer(cancel)
 			// decrease the number of currently running req/resp pairs
 			if c.concurrentCh != nil {
 				<-c.concurrentCh
 			}
 		}
 	}
-}
-
-// restartOrStopBusyTimer runs after a response was received.
-// It restarts the busy timer if there are open requests.
-func (c *Conn) restartOrStopBusyTimer(cancel context.CancelCauseFunc) {
-	// current timer hast to be stopped in any case
-	func() {
-		c.mxState.Lock()
-		defer c.mxState.Unlock()
-
-		if c.busyTimer != nil && !c.busyTimer.Stop() {
-			<-c.busyTimer.C
-		}
-		c.busyTimer = nil
-	}()
-	// If there are open requests, the timer has to be started
-	if c.openRequests() > 0 {
-		c.startBusyTimer(cancel)
-	}
-}
-
-func (c *Conn) startBusyTimer(cancel context.CancelCauseFunc) {
-	func() {
-		c.mxState.Lock()
-		defer c.mxState.Unlock()
-
-		c.busyTimer = time.NewTimer(c.BusyTimeout())
-		go func(busyCh <-chan time.Time, cancel context.CancelCauseFunc) {
-			<-busyCh
-			log.Print("Busy Timeout elapsed")
-			// cancel the send and the receive loop
-			cancel(ErrorTimeout)
-		}(c.busyTimer.C, cancel)
-	}()
-
-}
-
-func (c *Conn) openRequests() int {
-	c.mxRC.RLock()
-	defer c.mxRC.RUnlock()
-
-	return len(c.respChans)
 }
 
 func (c *Conn) cancelAllRequests(err error) {

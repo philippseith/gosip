@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 )
 
 type Conn struct {
@@ -23,8 +22,6 @@ type Conn struct {
 
 	userBusyTimeout  uint32
 	userLeaseTimeout uint32
-
-	busyTimer *time.Timer
 
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex
