@@ -1,13 +1,23 @@
 package sip
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 )
 
 // Port is the default SIP port
 const Port = 35021
+
+// General S/IP error. Base of all other S/IP errors
+var Error = errors.New("S/IP")
+
+var ErrorTimeout = fmt.Errorf("%w: timeout", Error)
+var ErrorClosed = fmt.Errorf("%w: connection closed", Error)
+var ErrorInvalidResponseMessageType = fmt.Errorf("%w: invalid response message type", Error)
+var ErrorWrongTransactionID = fmt.Errorf("%w: wrong TransactionID", Error)
 
 // PDU can be read from bytes and written to bytes and have a message type
 type PDU interface {
@@ -16,13 +26,12 @@ type PDU interface {
 	MessageType() uint32
 }
 
-var transactionId uint32
+var transactionID uint32
 
 func sendRequestReceiveHeader[Req PDU](conn net.Conn, req Req) (header *Header, err error) {
-	transactionId++
-	tId := transactionId
+	tID := atomic.AddUint32(&transactionID, 1)
 	header = &Header{
-		TransactionID: tId,
+		TransactionID: tID,
 		MessageType:   req.MessageType(),
 	}
 	if err = header.Write(conn); err != nil {
@@ -35,8 +44,8 @@ func sendRequestReceiveHeader[Req PDU](conn net.Conn, req Req) (header *Header, 
 	if err != nil {
 		return header, err
 	}
-	if header.TransactionID != tId {
-		return header, fmt.Errorf("wrong TransactionID. Expected %d, got %d", tId, header.TransactionID)
+	if header.TransactionID != tID {
+		return header, fmt.Errorf("%w. Expected %d, got %d", ErrorWrongTransactionID, tID, header.TransactionID)
 	}
 	return header, err
 }

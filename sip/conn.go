@@ -1,58 +1,46 @@
 package sip
 
-import (
-	"net"
-	"time"
-)
+import "time"
 
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
-	c = &Conn{timeoutReader: &timeoutReader{}}
+	c = &Conn{
+		timeoutReader:    &timeoutReader{},
+		userBusyTimeout:  2000,
+		userLeaseTimeout: 10000,
+	}
 	for _, option := range options {
 		if err := option(c); err != nil {
 			return nil, err
 		}
 	}
-	c.Conn, err = net.Dial(network, address)
-	if err != nil {
-		return nil, err
-	}
-	c.timeoutReader.reader = c.Conn
-	c.reqCh = make(chan request)
-	c.respChans = map[uint32]chan func(PDU) (Exception, error){}
-	go c.sendloop()
-	go c.receiveLoop()
+	// we use userBusy as BusyTimeout until the server responded
+	c.connectResponse.BusyTimeout = c.userBusyTimeout
+
+	err = <-c.connLoop(network, address)
 	return c, err
 }
 
-func ConcurrentTransactions(ct uint) func(c *Conn) error {
-	return func(c *Conn) error {
-		if ct > 0 {
-			c.concurrentCh = make(chan struct{}, ct)
-		}
-		return nil
+func (c *Conn) Close() error {
+	if c.cancel != nil {
+		c.cancel(ErrorClosed)
 	}
+	return c.cleanUp()
 }
 
-func (c *Conn) Connect(busyTimeout, leaseTimeout int) (ex Exception, err error) {
-	// TODO detect network latency (Ping?) and add it to the busy timeout
-	c.timeoutReader.SetTimeout(time.Duration(busyTimeout) * time.Millisecond)
-	readResponse := c.sendWaitForResponse(&ConnectRequest{
-		Version:      1,
-		BusyTimeout:  uint32(busyTimeout),
-		LeaseTimeout: uint32(leaseTimeout),
-	})
-	respPdu := &ConnectResponse{}
-	if ex, err = readResponse(respPdu); ex.CommomErrorCode != 0 || err != nil {
-		return ex, err
-	}
-	func() {
-		c.mxCR.Lock()
-		defer c.mxCR.Unlock()
+func (c *Conn) cleanUp() (err error) {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
 
-		c.connectResponse = *respPdu
-		c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
-	}()
-	return ex, err
+	if c.reqCh != nil {
+		close(c.reqCh)
+		c.reqCh = nil
+	}
+
+	if c.Conn != nil {
+		err = c.Conn.Close()
+		c.Conn = nil
+	}
+	return err
 }
 
 func (c *Conn) Connected() bool {
@@ -62,18 +50,18 @@ func (c *Conn) Connected() bool {
 	return c.connectResponse.Version != 0
 }
 
-func (c *Conn) BusyTimeout() int {
+func (c *Conn) BusyTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return int(c.connectResponse.BusyTimeout)
+	return time.Millisecond * time.Duration(c.connectResponse.BusyTimeout)
 }
 
-func (c *Conn) LeaseTimeout() int {
+func (c *Conn) LeaseTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return int(c.connectResponse.LeaseTimeout)
+	return time.Millisecond * time.Duration(c.connectResponse.LeaseTimeout)
 }
 
 func (c *Conn) MessageTypes() []uint32 {
@@ -83,51 +71,47 @@ func (c *Conn) MessageTypes() []uint32 {
 	return c.connectResponse.MessageTypes
 }
 
-func (c *Conn) Ping() (Exception, error) {
+func (c *Conn) Ping() error {
 	return c.sendWaitForResponse(&PingRequest{})(&PingResponse{})
 }
 
-func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, Exception, error) {
+func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	resp := ReadEverythingResponse{}
-	ex, err := c.sendWaitForResponse(&ReadEverythingRequest{
+	return resp, c.sendWaitForResponse(&ReadEverythingRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
-	return resp, ex, err
 }
 
-func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, Exception, error) {
+func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	resp := ReadOnlyDataResponse{}
-	ex, err := c.sendWaitForResponse(&ReadOnlyDataRequest{
+	return resp, c.sendWaitForResponse(&ReadOnlyDataRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
-	return resp, ex, err
 }
 
-func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, Exception, error) {
+func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	resp := ReadDescriptionResponse{}
-	ex, err := c.sendWaitForResponse(&ReadDescriptionRequest{
+	return resp, c.sendWaitForResponse(&ReadDescriptionRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
-	return resp, ex, err
 }
 
-func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, Exception, error) {
+func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	resp := ReadDataStateResponse{}
-	ex, err := c.sendWaitForResponse(&ReadDataStateRequest{
+	return resp, c.sendWaitForResponse(&ReadDataStateRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
-	return resp, ex, err
 }
 
-func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) (ex Exception, err error) {
+func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
 	return c.sendWaitForResponse(&WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			SlaveIndex:     uint16(slaveIndex),

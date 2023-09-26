@@ -8,17 +8,25 @@ import (
 )
 
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", "127.0.0.1:35021")
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
-
-	ex, err := conn.Connect(3000, 10000)
-
-	assert.NoError(t, err)
-	assert.Equal(t, uint16(0), ex.CommomErrorCode)
-
 	assert.NotEmpty(t, conn.MessageTypes())
+}
+
+func TestConnectNoServer(t *testing.T) {
+	conn, err := sip.Dial("tcp", "localhost:35022")
+	defer func() { _ = conn.Close() }()
+
+	assert.Error(t, err)
+}
+
+func TestConnectTimeout(t *testing.T) {
+	conn, err := sip.Dial("tcp", "localhost:35021", sip.BusyTimeout(1))
+
+	assert.Nil(t, conn)
+	assert.Error(t, err)
 }
 
 func TestPing(t *testing.T) {
@@ -27,12 +35,20 @@ func TestPing(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	ex, err := conn.Connect(3000, 10000)
-	assert.NoError(t, err)
-	assert.Equal(t, uint16(0), ex.CommomErrorCode)
-
-	ex, err = conn.Ping()
+	err = conn.Ping()
 
 	assert.NoError(t, err)
-	assert.Equal(t, uint16(0), ex.CommomErrorCode)
+}
+
+func TestPingShortClosedConnection(t *testing.T) {
+	conn, err := sip.Dial("tcp", "localhost:35021")
+
+	assert.NotNil(t, conn)
+	assert.NoError(t, err)
+
+	assert.NoError(t, conn.Close())
+
+	err = conn.Ping()
+
+	assert.Equal(t, sip.ErrorClosed, err)
 }

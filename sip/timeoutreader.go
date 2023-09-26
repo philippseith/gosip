@@ -1,13 +1,10 @@
 package sip
 
 import (
-	"errors"
 	"io"
 	"sync"
 	"time"
 )
-
-var ErrorTimeout = errors.New("S/IP timeout")
 
 type timeoutReader struct {
 	reader    io.Reader
