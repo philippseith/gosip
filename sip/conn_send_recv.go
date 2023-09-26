@@ -191,7 +191,9 @@ func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
 				return transactionId, err
 			}
 			err = pdu.Write(mtuWriter)
-			mtuWriter.Flush()
+			if err == nil {
+				err = mtuWriter.Flush()
+			}
 			return transactionId, err
 		},
 		ch: make(chan func(PDU) error),
