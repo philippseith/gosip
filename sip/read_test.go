@@ -12,7 +12,7 @@ import (
 )
 
 func TestReadEverything(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -27,7 +27,7 @@ func TestReadEverything(t *testing.T) {
 }
 
 func TestReadOnlyData(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestReadOnlyData(t *testing.T) {
 }
 
 func TestReadDescription(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestReadDescription(t *testing.T) {
 }
 
 func TestReadDataState(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestReadDataState(t *testing.T) {
 }
 
 func BenchmarkReadParallel(t *testing.B) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -100,7 +100,7 @@ func BenchmarkReadParallel(t *testing.B) {
 }
 
 func TestReadS192(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address, sip.ConcurrentTransactions(1))
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -129,4 +129,9 @@ func TestReadS192(t *testing.T) {
 	}
 	wg.Wait()
 	log.Print("stop")
+}
+
+func TestChanStruct(t *testing.T) {
+	ch := make(chan struct{}, 10000000)
+	ch <- struct{}{}
 }

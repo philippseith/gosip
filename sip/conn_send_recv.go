@@ -29,7 +29,7 @@ func (c *Conn) reqChIn() chan<- request {
 	return c.reqCh
 }
 
-func (c *Conn) sendloop(ctx context.Context, cancel context.CancelCauseFunc) {
+func (c *Conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 loop:
 	for {
 		select {
@@ -43,9 +43,9 @@ loop:
 				cancel(err)
 				break loop
 			}
-			if c.concurrentCh != nil {
+			if c.concurrentTransactionLimitCh != nil {
 				// Check if we could send. This blocks when no more concurrent requests are allowed
-				c.concurrentCh <- struct{}{}
+				c.concurrentTransactionLimitCh <- struct{}{}
 			}
 			if err := c.send(req); err != nil {
 				c.cancelAllRequests(err)
@@ -53,6 +53,8 @@ loop:
 				cancel(err)
 				break loop
 			}
+			// Inform receiveLoop there's a new transaction initiated
+			c.concurrentTransactionsCh <- struct{}{}
 		}
 	}
 }
@@ -65,7 +67,8 @@ loop:
 			log.Printf("breaking receiveLoop: %v", context.Cause(ctx))
 			break loop
 		default:
-			// Wait for at least one
+			// Wait for an initiated transaction
+			<-c.concurrentTransactionsCh
 			if err := c.receive(); err != nil {
 				c.cancelAllRequests(err)
 				log.Printf("breaking receiveLoop: %v", err)
@@ -73,8 +76,8 @@ loop:
 				break loop
 			}
 			// decrease the number of currently running req/resp pairs
-			if c.concurrentCh != nil {
-				<-c.concurrentCh
+			if c.concurrentTransactionLimitCh != nil {
+				<-c.concurrentTransactionLimitCh
 			}
 		}
 	}

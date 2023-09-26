@@ -4,9 +4,10 @@ import "time"
 
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
 	c = &Conn{
-		timeoutReader:    &timeoutReader{},
-		userBusyTimeout:  2000,
-		userLeaseTimeout: 10000,
+		timeoutReader:            &timeoutReader{},
+		userBusyTimeout:          2000,
+		userLeaseTimeout:         10000,
+		concurrentTransactionsCh: make(chan struct{}, 4000), // Practically infinite queue size, no memory allocation because of struct{} type
 	}
 	for _, option := range options {
 		if err := option(c); err != nil {
@@ -34,6 +35,14 @@ func (c *Conn) cleanUp() (err error) {
 	if c.reqCh != nil {
 		close(c.reqCh)
 		c.reqCh = nil
+	}
+	if c.concurrentTransactionsCh != nil {
+		close(c.concurrentTransactionsCh)
+		c.concurrentTransactionsCh = nil
+	}
+	if c.concurrentTransactionLimitCh != nil {
+		close(c.concurrentTransactionLimitCh)
+		c.concurrentTransactionLimitCh = nil
 	}
 
 	if c.Conn != nil {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestBusy(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)

@@ -59,7 +59,7 @@ func (c *Conn) connect(ctx context.Context, network, address string) (context.Co
 	}()
 
 	sendRecvCtx, sendRecvCancel := context.WithCancelCause(ctx)
-	go c.sendloop(sendRecvCtx, sendRecvCancel)
+	go c.sendLoop(sendRecvCtx, sendRecvCancel)
 	go c.receiveLoop(sendRecvCtx, sendRecvCancel)
 
 	// TODO detect network latency and add it to the busy timeout

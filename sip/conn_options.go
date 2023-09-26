@@ -25,7 +25,7 @@ func LeaseTimeout(timeout int) func(c *Conn) error {
 func ConcurrentTransactions(ct uint) func(c *Conn) error {
 	return func(c *Conn) error {
 		if ct > 0 {
-			c.concurrentCh = make(chan struct{}, ct)
+			c.concurrentTransactionLimitCh = make(chan struct{}, ct)
 		}
 		return nil
 	}

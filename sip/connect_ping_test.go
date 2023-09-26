@@ -7,8 +7,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var address = "127.0.0.2:35021"
+
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", "127.0.0.1:35021")
+	conn, err := sip.Dial("tcp", address)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
@@ -23,14 +25,14 @@ func TestConnectNoServer(t *testing.T) {
 }
 
 func TestConnectTimeout(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021", sip.BusyTimeout(1))
+	conn, err := sip.Dial("tcp", address, sip.BusyTimeout(1))
 
 	assert.Nil(t, conn)
 	assert.Error(t, err)
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
@@ -41,7 +43,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestPingShortClosedConnection(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35021")
+	conn, err := sip.Dial("tcp", address)
 
 	assert.NotNil(t, conn)
 	assert.NoError(t, err)

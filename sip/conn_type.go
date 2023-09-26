@@ -14,8 +14,9 @@ type Conn struct {
 
 	transactionID uint32
 
-	reqCh        chan request
-	concurrentCh chan struct{}
+	reqCh                        chan request
+	concurrentTransactionLimitCh chan struct{}
+	concurrentTransactionsCh     chan struct{}
 
 	respChans map[uint32]chan func(PDU) error
 	mxRC      sync.RWMutex
