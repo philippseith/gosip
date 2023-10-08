@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"sync/atomic"
 )
 
@@ -29,7 +30,8 @@ func (c *Conn) reqChIn() chan<- request {
 	return c.reqCh
 }
 
-func (c *Conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+func (c *Conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc, sendRecvWg *sync.WaitGroup) {
+	defer sendRecvWg.Done()
 loop:
 	for {
 		select {
@@ -59,7 +61,8 @@ loop:
 	}
 }
 
-func (c *Conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+func (c *Conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc, sendRecvWg *sync.WaitGroup) {
+	defer sendRecvWg.Done()
 loop:
 	for {
 		select {
@@ -203,7 +206,9 @@ func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
 	ch := c.reqChIn()
 	// Is the connection closed?
 	if ch == nil {
-		return func(PDU) error { return ErrorClosed }
+		return func(PDU) error {
+			return ErrorClosed
+		}
 	}
 	// Send request job into the queue of the sendLoop
 	ch <- req

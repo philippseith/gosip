@@ -1,6 +1,8 @@
 package sip
 
-import "time"
+import (
+	"time"
+)
 
 // Dial opens a sip.Conn.
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {

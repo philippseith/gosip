@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -15,17 +16,18 @@ func (c *Conn) connLoop(network, address string) chan error {
 	go func(ch chan error) {
 		defer close(ch)
 
-		inital := true
+		initial := true
 	loop:
 		for {
+			log.Print("conn_loop")
 			select {
 			case <-ctx.Done():
 				log.Printf("breaking connLoop: %v", context.Cause(ctx))
 				break loop
 			default:
-				sendRecvCtx, err := c.connect(ctx, network, address)
-				if inital {
-					inital = false
+				sendRecvCtx, wg, err := c.connect(ctx, network, address)
+				if initial {
+					initial = false
 					ch <- err
 				}
 				if err != nil {
@@ -34,6 +36,7 @@ func (c *Conn) connLoop(network, address string) chan error {
 					break loop
 				}
 				<-sendRecvCtx.Done()
+				wg.Wait()
 			}
 		}
 		ch <- c.cleanUp()
@@ -42,10 +45,10 @@ func (c *Conn) connLoop(network, address string) chan error {
 	return ch
 }
 
-func (c *Conn) connect(ctx context.Context, network, address string) (context.Context, error) {
+func (c *Conn) connect(ctx context.Context, network, address string) (context.Context, *sync.WaitGroup, error) {
 	conn, err := net.Dial(network, address)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	func() {
@@ -59,12 +62,14 @@ func (c *Conn) connect(ctx context.Context, network, address string) (context.Co
 	}()
 
 	sendRecvCtx, sendRecvCancel := context.WithCancelCause(ctx)
-	go c.sendLoop(sendRecvCtx, sendRecvCancel)
-	go c.receiveLoop(sendRecvCtx, sendRecvCancel)
+	sendRecvWg := &sync.WaitGroup{}
+	sendRecvWg.Add(2)
+	go c.sendLoop(sendRecvCtx, sendRecvCancel, sendRecvWg)
+	go c.receiveLoop(sendRecvCtx, sendRecvCancel, sendRecvWg)
 
 	// TODO detect network latency and add it to the busy timeout
 
-	return sendRecvCtx, c.sendReceiveConnect()
+	return sendRecvCtx, sendRecvWg, c.sendReceiveConnect()
 }
 
 func (c *Conn) sendReceiveConnect() error {
