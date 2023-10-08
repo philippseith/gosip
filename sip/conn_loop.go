@@ -63,7 +63,6 @@ func (c *Conn) connect(ctx context.Context, network, address string) (context.Co
 	go c.receiveLoop(sendRecvCtx, sendRecvCancel)
 
 	// TODO detect network latency and add it to the busy timeout
-	// TODO Send Ping KeepAlive
 
 	return sendRecvCtx, c.sendReceiveConnect()
 }
@@ -85,6 +84,29 @@ func (c *Conn) sendReceiveConnect() error {
 
 		c.connectResponse = *respPdu
 		c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
+		// Eventually start the KeepAlive loop
+		if c.sendKeepAlive {
+			go c.sendKeepAliveLoop()
+		}
 	}()
 	return nil
+}
+
+func (c *Conn) sendKeepAliveLoop() {
+	loopTime := c.LeaseTimeout() - 100*time.Millisecond
+	<-time.After(loopTime)
+	if err := c.Ping(); err != nil {
+		log.Printf("sendKeepAlive: %v", err)
+		return
+	}
+
+	ticker := time.NewTicker(loopTime)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if err := c.Ping(); err != nil {
+			log.Printf("sendKeepAlive: %v", err)
+			break
+		}
+	}
 }

@@ -2,6 +2,7 @@ package sip
 
 import "time"
 
+// Dial opens a sip.Conn.
 func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
 	c = &Conn{
 		timeoutReader:            &timeoutReader{},

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var address = "127.0.0.2:35021"
+var address = "127.0.0.1:35021"
 
 func TestConnect(t *testing.T) {
 	conn, err := sip.Dial("tcp", address)

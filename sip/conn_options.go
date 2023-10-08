@@ -34,8 +34,10 @@ func ConcurrentTransactions(ct uint) func(c *Conn) error {
 // SendKeepAlive configures the connection that it is sending Ping requests
 // shortly before the LeaseTimeout ends.
 func SendKeepAlive() func(c *Conn) error {
-	// TODO
-	return func(c *Conn) error { return nil }
+	return func(c *Conn) error {
+		c.sendKeepAlive = true
+		return nil
+	}
 }
 
 // MeasureNetworkLatencyICMP measures the network latency with an ICMP ping.

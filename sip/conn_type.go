@@ -23,6 +23,7 @@ type Conn struct {
 
 	userBusyTimeout  uint32
 	userLeaseTimeout uint32
+	sendKeepAlive    bool
 
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex
