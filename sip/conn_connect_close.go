@@ -50,6 +50,20 @@ func (c *conn) sendKeepAliveLoop() {
 	}
 }
 
+func (c *conn) cancelAllRequests(err error) {
+	c.mxRC.Lock()
+	defer c.mxRC.Unlock()
+
+	errFunc := func(PDU) error {
+		return err
+	}
+	for _, ch := range c.respChans {
+		cch := ch
+		go func() { cch <- errFunc }()
+	}
+	c.respChans = map[uint32]chan func(PDU) error{}
+}
+
 func (c *conn) cleanUp() (err error) {
 	c.mxState.Lock()
 	defer c.mxState.Unlock()

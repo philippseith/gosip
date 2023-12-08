@@ -56,6 +56,10 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 
 	go c.sendLoop(sendRecvCtx, cancel)
 	go c.receiveLoop(sendRecvCtx, cancel)
+	go func() {
+		<-sendRecvCtx.Done()
+		c.cancelAllRequests(context.Cause(sendRecvCtx))
+	}()
 
 	return c, c.connect()
 }

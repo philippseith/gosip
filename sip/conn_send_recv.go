@@ -3,14 +3,77 @@ package sip
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"sync/atomic"
 )
 
-func (c *conn) nextRequest() <-chan request {
+// sendLoop is sending the requests it gets from the request queue.
+// Before it sends the request, it is waiting that a new transaction is allowed,
+// which might not be the case when the number of concurrent transactions is limited.
+// When sending fails, it cancels all open requests, stops the receiveLoop and returns.
+// If sending is ok, the sendloop signals to the receiveLoop that a new transaction has been started.
+func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+	err := func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			// Get a new request
+			case req, ok := <-c.dequeueRequest():
+				if !ok {
+					return ErrorClosed
+				}
+				if err := wait(c.transactionAllowed); err != nil {
+					return err
+				}
+				if err := c.send(req); err != nil {
+					cancel(err)
+					return err
+				}
+				// Inform receiveLoop there's a new transaction initiated
+				if err := signal(c.transactionStarted); err != nil {
+					return err
+				}
+			}
+		}
+	}()
+	log.Printf("breaking sendLoop: %v", err)
+}
+
+// receiveLoop receives responses from the server and dispatches them to .
+// Before it starts listening on the net.Conn for responsed, it waits for the sendloop
+// signaling that a transaction has been started. After the response has been read and
+// dispatched to the ReadXXX methods, it signals the sendLoop that a new (concurrent) transaction is now allowed.
+// If receiving fails, it cancels all open requests, stops the sendLoop and returns.
+func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+	err := func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			default:
+				// Wait for an initiated transaction
+				if err := wait(c.transactionStarted); err != nil {
+					return err
+				}
+				if err := c.receiveAndDispatch(); err != nil {
+					cancel(err)
+					return err
+				}
+				// decrease the number of currently running req/resp pairs
+				if err := signal(c.transactionAllowed); err != nil {
+					return err
+				}
+			}
+		}
+	}()
+	log.Printf("breaking receiveLoop: %v", err)
+}
+
+// dequeueRequest fetches a request from the request queue.
+func (c *conn) dequeueRequest() <-chan request {
 	c.mxState.RLock()
 	defer c.mxState.RUnlock()
 
@@ -23,109 +86,46 @@ func (c *conn) nextRequest() <-chan request {
 	return ch
 }
 
-func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
-	var err error
-loop:
-	for {
-		select {
-		case <-ctx.Done():
-			err = context.Cause(ctx)
-			break loop
-		case req, ok := <-c.nextRequest():
-			if !ok {
-				err = errors.New("reqCh closed")
-				cancel(err)
-				break loop
-			}
-			if err = c.waitForConcurrentTransactionAllowed(); err != nil {
-				break
-			}
-			if err = c.send(req); err != nil {
-				c.cancelAllRequests(err)
-				cancel(err)
-				break loop
-			}
-			// Inform receiveLoop there's a new transaction initiated
-			if err = c.signalTransactionStarted(); err != nil {
-				break
-			}
-		}
+// enqueueRequest puts a request into the request queue.
+func (c *conn) enqueueRequest(req request) error {
+	ch := func() chan<- request {
+		c.mxState.RLock()
+		defer c.mxState.RUnlock()
+
+		return c.reqCh
+	}()
+	// Is the connection closed?
+	if ch == nil {
+		return ErrorClosed
 	}
-	log.Printf("breaking sendLoop: %v", err)
+	// Send request job into the queue of the sendLoop
+	ch <- req
+	return nil
 }
 
-func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
-	var err error
-loop:
-	for {
-		select {
-		case <-ctx.Done():
-			err = context.Cause(ctx)
-			break loop
-		default:
-			// Wait for an initiated transaction
-			if err = c.waitForTransactionStarted(); err != nil {
-				break loop
-			}
-			if err = c.receive(); err != nil {
-				c.cancelAllRequests(err)
-				cancel(err)
-				break loop
-			}
-			// decrease the number of currently running req/resp pairs
-			if err = c.signalConcurrentTransactionAllowed(); err != nil {
-				break loop
-			}
-		}
-	}
-	log.Printf("breaking receiveLoop: %v", err)
-}
-
-func (c *conn) signalConcurrentTransactionAllowed() error {
-	return signal(c.getConcurrentTransactionLimitCh)
-}
-
-func (c *conn) waitForConcurrentTransactionAllowed() error {
-	return wait(c.getConcurrentTransactionLimitCh)
-}
-
-func (c *conn) signalTransactionStarted() error {
-	return signal(c.getTransactionStartedCh)
-}
-
-func (c *conn) waitForTransactionStarted() error {
-	return wait(c.getTransactionStartedCh)
-}
-
-func (c *conn) cancelAllRequests(err error) {
-	c.mxRC.Lock()
-	defer c.mxRC.Unlock()
-
-	errFunc := func(PDU) error {
-		return err
-	}
-	for _, ch := range c.respChans {
-		cch := ch
-		go func() { cch <- errFunc }()
-	}
-	c.respChans = map[uint32]chan func(PDU) error{}
-}
-
+// send writes the contents of the request to the net.Conn.
 func (c *conn) send(req request) error {
-	tID, err := req.write(c.Conn)
+	// The write function of the request is build in sendAndWaitForResponse,
+	// where also the transactionID is set.
+	transactionID, err := req.write(c.Conn)
 	if err != nil {
 		return err
 	}
 	func() {
 		c.mxRC.Lock()
 		defer c.mxRC.Unlock()
-
-		c.respChans[tID] = req.ch
+		// Store the response channel of the request under the transactionID
+		// The receiveAndDispatch will use it when it reads a Header with this
+		// transactionID to return the function to read the rest of the PDU
+		// to sendAndWaitForResponse
+		c.respChans[transactionID] = req.ch
 	}()
 	return nil
 }
 
-func (c *conn) receive() error {
+// receiveAndDispatch reads from the net.Conn and dispatches
+// the responses according to the received transactionIDs.
+func (c *conn) receiveAndDispatch() error {
 	c.mxRecv.Lock()
 	defer c.mxRecv.Unlock()
 
@@ -134,10 +134,11 @@ func (c *conn) receive() error {
 	if err != nil {
 		return err
 	}
-	if h.MessageType == 0 {
+	if h.MessageType == 0 { // TODO When does this happen?
 		return nil
 	}
 	var respFunc func(PDU) error
+	// prepare waiting for the respFunc to end
 	respFuncExecuted := make(chan struct{})
 	switch h.MessageType {
 	case BusyResponseMsgType:
@@ -161,7 +162,9 @@ func (c *conn) receive() error {
 			return pdu.Read(c.timeoutReader)
 		}
 	}
+	// Get the response channel of the request for this transactionID and send the respFunc to it
 	c.checkoutResponseChan(h.TransactionID) <- respFunc
+	// Important: Wait for the current respFunc to read the rest of the message (the PDU) from the net.Conn
 	<-respFuncExecuted
 	return nil
 }
@@ -214,65 +217,27 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 	}
 	defer close(req.ch)
 	// Push the request to the sendloop
-	if err := c.pushToSendLoop(req); err != nil {
+	if err := c.enqueueRequest(req); err != nil {
 		// The sendloop does not run anymore
 		return func(PDU) error { return err }
 	}
-	// wait for the function by which we can read the response (comes from the receiveLoop which reads the header)
+	// wait for the function by which we can read the response
+	// (comes from the receiveLoop calling receiveAndDispatch which reads the header)
 	readResp := <-req.ch
-	// When this returns, req.ch can be closed
+	// When this returns, req.ch can be closed (defer does this)
 	return readResp
 }
 
-func (c *conn) pushToSendLoop(req request) error {
-	ch := func() chan<- request {
-		c.mxState.RLock()
-		defer c.mxState.RUnlock()
-
-		return c.reqCh
-	}()
-	// Is the connection closed?
-	if ch == nil {
-		return ErrorClosed
-	}
-	// Send request job into the queue of the sendLoop
-	ch <- req
-	return nil
-}
-
-func (c *conn) getConcurrentTransactionLimitCh() chan struct{} {
+func (c *conn) transactionAllowed() chan struct{} {
 	c.mxState.Lock()
 	defer c.mxState.Unlock()
 
 	return c.concurrentTransactionLimitCh
 }
 
-func (c *conn) getTransactionStartedCh() chan struct{} {
+func (c *conn) transactionStarted() chan struct{} {
 	c.mxState.Lock()
 	defer c.mxState.Unlock()
 
 	return c.transactionStartedCh
-}
-
-func signal(getChan func() chan struct{}) error {
-	ch := getChan()
-
-	if ch == nil {
-		return ErrorClosed
-	}
-	_, ok := <-ch
-	if !ok {
-		return ErrorClosed
-	}
-	return nil
-}
-
-func wait(getChan func() chan struct{}) error {
-	ch := getChan()
-
-	if ch == nil {
-		return ErrorClosed
-	}
-	ch <- struct{}{}
-	return nil
 }
