@@ -9,11 +9,12 @@ import (
 	"sync/atomic"
 )
 
-// sendLoop is sending the requests it gets from the request queue.
-// Before it sends the request, it is waiting that a new transaction is allowed,
-// which might not be the case when the number of concurrent transactions is limited.
-// When sending fails, it cancels all open requests, stops the receiveLoop and returns.
-// If sending is ok, the sendloop signals to the receiveLoop that a new transaction has been started.
+// sendLoop is sending the requests it gets from the request queue. Before it
+// sends the request, it is waiting that a new transaction is allowed, which
+// might not be the case when the number of concurrent transactions is limited.
+// When sending fails, it cancels all open requests, stops the receiveLoop and
+// returns. If sending is ok, the sendLoop signals to the receiveLoop that a new
+// transaction has been started.
 func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 	err := func() error {
 		for {
@@ -42,11 +43,12 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 	log.Printf("breaking sendLoop: %v", err)
 }
 
-// receiveLoop receives responses from the server and dispatches them to .
-// Before it starts listening on the net.Conn for responsed, it waits for the sendloop
-// signaling that a transaction has been started. After the response has been read and
-// dispatched to the ReadXXX methods, it signals the sendLoop that a new (concurrent) transaction is now allowed.
-// If receiving fails, it cancels all open requests, stops the sendLoop and returns.
+// receiveLoop receives responses from the server and dispatches them to . Before
+// it starts listening on the net.Conn for responses, it waits for the sendLoop
+// signaling that a transaction has been started. After the response has been
+// read and dispatched to the ReadXXX methods, it signals the sendLoop that a new
+// (concurrent) transaction is now allowed. If receiving fails, it cancels all
+// open requests, stops the sendLoop and returns.
 func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 	err := func() error {
 		for {
