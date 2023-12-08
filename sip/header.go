@@ -7,7 +7,7 @@ import (
 
 type Header struct {
 	TransactionID uint32
-	MessageType   uint32
+	MessageType   MessageType
 }
 
 func (h *Header) Read(reader io.Reader) error {

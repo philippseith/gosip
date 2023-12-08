@@ -26,7 +26,7 @@ func (c *ConnectRequest) Write(writer io.Writer) error {
 	return binary.Write(writer, binary.LittleEndian, *c)
 }
 
-func (c *ConnectRequest) MessageType() uint32 {
+func (c *ConnectRequest) MessageType() MessageType {
 	return ConnectRequestMsgType
 }
 
@@ -66,6 +66,6 @@ func (c *ConnectResponse) Write(writer io.Writer) error {
 	return binary.Write(writer, binary.LittleEndian, c.MessageTypes)
 }
 
-func (c *ConnectResponse) MessageType() uint32 {
+func (c *ConnectResponse) MessageType() MessageType {
 	return ConnectResponseMsgType
 }

@@ -19,7 +19,7 @@ func (r *ReadDescriptionRequest) Write(writer io.Writer) error {
 	return binary.Write(writer, binary.LittleEndian, *r)
 }
 
-func (r *ReadDescriptionRequest) MessageType() uint32 {
+func (r *ReadDescriptionRequest) MessageType() MessageType {
 	return ReadDescriptionRequestMsgType
 }
 
@@ -70,6 +70,6 @@ func (r *ReadDescriptionResponse) Write(writer io.Writer) error {
 	return nil
 }
 
-func (r *ReadDescriptionResponse) MessageType() uint32 {
+func (r *ReadDescriptionResponse) MessageType() MessageType {
 	return ReadDescriptionResponseMsgType
 }

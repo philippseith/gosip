@@ -10,80 +10,94 @@ import (
 	"sync/atomic"
 )
 
-func (c *Conn) reqChOut() <-chan request {
+func (c *conn) nextRequest() <-chan request {
 	c.mxState.RLock()
 	defer c.mxState.RUnlock()
 
 	if c.reqCh != nil {
 		return c.reqCh
 	}
+	// Connection closed, return closed channel
 	ch := make(chan request)
 	close(ch)
 	return ch
 }
 
-func (c *Conn) reqChIn() chan<- request {
-	c.mxState.RLock()
-	defer c.mxState.RUnlock()
-
-	return c.reqCh
-}
-
-func (c *Conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+	var err error
 loop:
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("breaking sendLoop: %v", context.Cause(ctx))
+			err = context.Cause(ctx)
 			break loop
-		case req, ok := <-c.reqChOut():
+		case req, ok := <-c.nextRequest():
 			if !ok {
-				err := errors.New("breaking sendLoop: reqCh closed")
-				log.Print(err)
+				err = errors.New("reqCh closed")
 				cancel(err)
 				break loop
 			}
-			if c.concurrentTransactionLimitCh != nil {
-				// Check if we could send. This blocks when no more concurrent requests are allowed
-				c.concurrentTransactionLimitCh <- struct{}{}
+			if err = c.waitForConcurrentTransactionAllowed(); err != nil {
+				break
 			}
-			if err := c.send(req); err != nil {
+			if err = c.send(req); err != nil {
 				c.cancelAllRequests(err)
-				log.Printf("breaking sendLoop: %v", err)
 				cancel(err)
 				break loop
 			}
 			// Inform receiveLoop there's a new transaction initiated
-			c.concurrentTransactionsCh <- struct{}{}
+			if err = c.signalTransactionStarted(); err != nil {
+				break
+			}
 		}
 	}
+	log.Printf("breaking sendLoop: %v", err)
 }
 
-func (c *Conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) {
+	var err error
 loop:
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("breaking receiveLoop: %v", context.Cause(ctx))
+			err = context.Cause(ctx)
 			break loop
 		default:
 			// Wait for an initiated transaction
-			<-c.concurrentTransactionsCh
-			if err := c.receive(); err != nil {
+			if err = c.waitForTransactionStarted(); err != nil {
+				break loop
+			}
+			if err = c.receive(); err != nil {
 				c.cancelAllRequests(err)
-				log.Printf("breaking receiveLoop: %v", err)
 				cancel(err)
 				break loop
 			}
 			// decrease the number of currently running req/resp pairs
-			if c.concurrentTransactionLimitCh != nil {
-				<-c.concurrentTransactionLimitCh
+			if err = c.signalConcurrentTransactionAllowed(); err != nil {
+				break loop
 			}
 		}
 	}
+	log.Printf("breaking receiveLoop: %v", err)
 }
 
-func (c *Conn) cancelAllRequests(err error) {
+func (c *conn) signalConcurrentTransactionAllowed() error {
+	return signal(c.getConcurrentTransactionLimitCh)
+}
+
+func (c *conn) waitForConcurrentTransactionAllowed() error {
+	return wait(c.getConcurrentTransactionLimitCh)
+}
+
+func (c *conn) signalTransactionStarted() error {
+	return signal(c.getTransactionStartedCh)
+}
+
+func (c *conn) waitForTransactionStarted() error {
+	return wait(c.getTransactionStartedCh)
+}
+
+func (c *conn) cancelAllRequests(err error) {
 	c.mxRC.Lock()
 	defer c.mxRC.Unlock()
 
@@ -97,7 +111,7 @@ func (c *Conn) cancelAllRequests(err error) {
 	c.respChans = map[uint32]chan func(PDU) error{}
 }
 
-func (c *Conn) send(req request) error {
+func (c *conn) send(req request) error {
 	tID, err := req.write(c.Conn)
 	if err != nil {
 		return err
@@ -111,7 +125,7 @@ func (c *Conn) send(req request) error {
 	return nil
 }
 
-func (c *Conn) receive() error {
+func (c *conn) receive() error {
 	c.mxRecv.Lock()
 	defer c.mxRecv.Unlock()
 
@@ -152,7 +166,7 @@ func (c *Conn) receive() error {
 	return nil
 }
 
-func (c *Conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) error, error) {
+func (c *conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) error, error) {
 	ex := Exception{}
 	if err := ex.Read(c.timeoutReader); err != nil {
 		return nil, err
@@ -164,7 +178,7 @@ func (c *Conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) e
 	}, nil
 }
 
-func (c *Conn) checkoutResponseChan(tID uint32) chan func(PDU) error {
+func (c *conn) checkoutResponseChan(tID uint32) chan func(PDU) error {
 	c.mxRC.Lock()
 	defer c.mxRC.Unlock()
 
@@ -173,7 +187,7 @@ func (c *Conn) checkoutResponseChan(tID uint32) chan func(PDU) error {
 	return ch
 }
 
-func (c *Conn) writeHeader(conn io.Writer, pdu PDU) (transactiondID uint32, err error) {
+func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err error) {
 	h := Header{
 		TransactionID: atomic.AddUint32(&c.transactionID, 1),
 		MessageType:   pdu.MessageType(),
@@ -181,7 +195,7 @@ func (c *Conn) writeHeader(conn io.Writer, pdu PDU) (transactiondID uint32, err 
 	return h.TransactionID, h.Write(conn)
 }
 
-func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
+func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
@@ -199,15 +213,66 @@ func (c *Conn) sendWaitForResponse(pdu PDU) func(PDU) error {
 		ch: make(chan func(PDU) error),
 	}
 	defer close(req.ch)
-	// Get the sendLoop queue
-	ch := c.reqChIn()
+	// Push the request to the sendloop
+	if err := c.pushToSendLoop(req); err != nil {
+		// The sendloop does not run anymore
+		return func(PDU) error { return err }
+	}
+	// wait for the function by which we can read the response (comes from the receiveLoop which reads the header)
+	readResp := <-req.ch
+	// When this returns, req.ch can be closed
+	return readResp
+}
+
+func (c *conn) pushToSendLoop(req request) error {
+	ch := func() chan<- request {
+		c.mxState.RLock()
+		defer c.mxState.RUnlock()
+
+		return c.reqCh
+	}()
 	// Is the connection closed?
 	if ch == nil {
-		return func(PDU) error { return ErrorClosed }
+		return ErrorClosed
 	}
 	// Send request job into the queue of the sendLoop
 	ch <- req
-	// wait for the function by which we can read the response (comes from the receiveLoop which reads the header)
-	readResp := <-req.ch
-	return readResp
+	return nil
+}
+
+func (c *conn) getConcurrentTransactionLimitCh() chan struct{} {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	return c.concurrentTransactionLimitCh
+}
+
+func (c *conn) getTransactionStartedCh() chan struct{} {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	return c.transactionStartedCh
+}
+
+func signal(getChan func() chan struct{}) error {
+	ch := getChan()
+
+	if ch == nil {
+		return ErrorClosed
+	}
+	_, ok := <-ch
+	if !ok {
+		return ErrorClosed
+	}
+	return nil
+}
+
+func wait(getChan func() chan struct{}) error {
+	ch := getChan()
+
+	if ch == nil {
+		return ErrorClosed
+	}
+	ch <- struct{}{}
+	return nil
 }

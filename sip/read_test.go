@@ -71,7 +71,10 @@ func TestReadDataState(t *testing.T) {
 }
 
 func BenchmarkReadParallel(t *testing.B) {
+	log.SetFlags(log.Lmicroseconds)
+
 	conn, err := sip.Dial("tcp", address)
+	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
 	if err != nil {

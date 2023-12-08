@@ -21,7 +21,7 @@ func (c *Exception) Write(writer io.Writer) error {
 	return binary.Write(writer, binary.LittleEndian, *c)
 }
 
-func (c *Exception) MessageType() uint32 {
+func (c *Exception) MessageType() MessageType {
 	return ExceptionMsgType
 }
 

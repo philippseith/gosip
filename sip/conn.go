@@ -1,128 +1,142 @@
 package sip
 
-import "time"
+import (
+	"context"
+	"net"
+	"time"
+)
+
+type Conn interface {
+	Connected() bool
+
+	BusyTimeout() time.Duration
+	LeaseTimeout() time.Duration
+
+	MessageTypes() []uint32
+
+	Ping() error
+
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error
+
+	Close() error
+}
 
 // Dial opens a sip.Conn.
-func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
-	c = &Conn{
-		timeoutReader:            &timeoutReader{},
-		userBusyTimeout:          2000,
-		userLeaseTimeout:         10000,
-		concurrentTransactionsCh: make(chan struct{}, 4000), // Practically infinite queue size, no memory allocation because of struct{} type
+func Dial(network, address string, options ...func(c *connOptions) error) (Conn, error) {
+	netConn, err := net.Dial(network, address)
+	if err != nil {
+		return nil, err
+	}
+	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+
+	c := &conn{
+		Conn: netConn,
+		connOptions: connOptions{
+			userBusyTimeout:              2000,
+			userLeaseTimeout:             10000,
+			concurrentTransactionLimitCh: make(chan struct{}, 5000), // Practically infinite queue size
+		},
+		timeoutReader: &timeoutReader{reader: netConn},
+
+		reqCh:                make(chan request),
+		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
+		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	for _, option := range options {
-		if err := option(c); err != nil {
+		if err := option(&c.connOptions); err != nil {
 			return nil, err
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	err = <-c.connLoop(network, address)
-	return c, err
+	go c.sendLoop(sendRecvCtx, cancel)
+	go c.receiveLoop(sendRecvCtx, cancel)
+
+	return c, c.connect()
 }
 
-func (c *Conn) Close() error {
+func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
 	return c.cleanUp()
 }
 
-func (c *Conn) cleanUp() (err error) {
-	c.mxState.Lock()
-	defer c.mxState.Unlock()
-
-	if c.reqCh != nil {
-		close(c.reqCh)
-		c.reqCh = nil
-	}
-	if c.concurrentTransactionsCh != nil {
-		close(c.concurrentTransactionsCh)
-		c.concurrentTransactionsCh = nil
-	}
-	if c.concurrentTransactionLimitCh != nil {
-		close(c.concurrentTransactionLimitCh)
-		c.concurrentTransactionLimitCh = nil
-	}
-
-	if c.Conn != nil {
-		err = c.Conn.Close()
-		c.Conn = nil
-	}
-	return err
-}
-
-func (c *Conn) Connected() bool {
+func (c *conn) Connected() bool {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return c.connectResponse.Version != 0
 }
 
-func (c *Conn) BusyTimeout() time.Duration {
+func (c *conn) BusyTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return time.Millisecond * time.Duration(c.connectResponse.BusyTimeout)
 }
 
-func (c *Conn) LeaseTimeout() time.Duration {
+func (c *conn) LeaseTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return time.Millisecond * time.Duration(c.connectResponse.LeaseTimeout)
 }
 
-func (c *Conn) MessageTypes() []uint32 {
+func (c *conn) MessageTypes() []uint32 {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return c.connectResponse.MessageTypes
 }
 
-func (c *Conn) Ping() error {
-	return c.sendWaitForResponse(&PingRequest{})(&PingResponse{})
+func (c *conn) Ping() error {
+	return c.sendAndWaitForResponse(&PingRequest{})(&PingResponse{})
 }
 
-func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	resp := ReadEverythingResponse{}
-	return resp, c.sendWaitForResponse(&ReadEverythingRequest{
+	return resp, c.sendAndWaitForResponse(&ReadEverythingRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
 }
 
-func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	resp := ReadOnlyDataResponse{}
-	return resp, c.sendWaitForResponse(&ReadOnlyDataRequest{
+	return resp, c.sendAndWaitForResponse(&ReadOnlyDataRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
 }
 
-func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	resp := ReadDescriptionResponse{}
-	return resp, c.sendWaitForResponse(&ReadDescriptionRequest{
+	return resp, c.sendAndWaitForResponse(&ReadDescriptionRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
 }
 
-func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	resp := ReadDataStateResponse{}
-	return resp, c.sendWaitForResponse(&ReadDataStateRequest{
+	return resp, c.sendAndWaitForResponse(&ReadDataStateRequest{
 		SlaveIndex:     uint16(slaveIndex),
 		SlaveExtension: uint16(slaveExtension),
 		IDN:            idn,
 	})(&resp)
 }
 
-func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	return c.sendWaitForResponse(&WriteDataRequest{
+func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	return c.sendAndWaitForResponse(&WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			SlaveIndex:     uint16(slaveIndex),
 			SlaveExtension: uint16(slaveExtension),

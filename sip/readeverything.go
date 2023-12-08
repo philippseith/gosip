@@ -19,7 +19,7 @@ func (r *ReadEverythingRequest) Write(writer io.Writer) error {
 	return binary.Write(writer, binary.LittleEndian, *r)
 }
 
-func (r *ReadEverythingRequest) MessageType() uint32 {
+func (r *ReadEverythingRequest) MessageType() MessageType {
 	return ReadEverythingRequestMsgType
 }
 
@@ -84,6 +84,6 @@ func (r *ReadEverythingResponse) Write(writer io.Writer) error {
 	return nil
 }
 
-func (r *ReadEverythingResponse) MessageType() uint32 {
+func (r *ReadEverythingResponse) MessageType() MessageType {
 	return ReadEverythingResponseMsgType
 }
