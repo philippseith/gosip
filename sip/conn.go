@@ -10,13 +10,7 @@ import (
 // Its lifetime starts witth Dial() and ends when the user calls Close(),
 // the server does not anwser in timely manner (BusyTimeout) or the underlying net.Conn has been closed.
 type Conn interface {
-	Connected() bool
-
-	BusyTimeout() time.Duration
-	LeaseTimeout() time.Duration
-	LastReceived() time.Time
-
-	MessageTypes() []uint32
+	ConnProperties
 
 	Ping() error
 
@@ -27,6 +21,16 @@ type Conn interface {
 	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error
 
 	Close() error
+}
+
+type ConnProperties interface {
+	Connected() bool
+
+	BusyTimeout() time.Duration
+	LeaseTimeout() time.Duration
+	LastReceived() time.Time
+
+	MessageTypes() []uint32
 }
 
 // Dial opens a sip.Conn.
