@@ -8,7 +8,15 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
-// Client is like Conn, but
+// Client is like Conn, but with automatic reconnect, a configurable timeout
+// strategy for reconnection, the possibility to cancel single requests with a
+// context.Context and to automatically retry requests.
+//
+// Ping, ReadXXX, WriteData work like the Conn methods but try to reconnect when
+// the underlying connection has been closed meanwhile. Their further behavior
+// can be configured with options.
+//
+// Close closes the currently open connection, if there is any yet.
 type Client interface {
 	ConnProperties
 
@@ -18,14 +26,24 @@ type Client interface {
 	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error)
 	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error)
 	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error)
+
 	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error
 
 	Close() error
 }
 
+// NewClient creates a new Client. The backoff strategy for failed connects can
+// be configured by the WithDialBackoff option. If the option is not given, the
+// backoff strategy is an exponential backoff, starting with a backoff time of
+// 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
+// seconds. All other options are ignored.
 func NewClient(network, address string, options ...func(c *connOptions) error) Client {
 	co := &connOptions{
-		backoffFactory: func() backoff.BackOff { return backoff.NewExponentialBackOff() },
+		backoffFactory: func() backoff.BackOff {
+			b := backoff.NewExponentialBackOff()
+			b.MaxElapsedTime = 10 * time.Second
+			return b
+		},
 	}
 	for _, option := range options {
 		_ = option(co)
@@ -38,13 +56,19 @@ func NewClient(network, address string, options ...func(c *connOptions) error) C
 	}
 }
 
-func WithBackoff(backoffFactory func() backoff.BackOff) func(c *connOptions) error {
+// WithDialBackoff configures the backoff strategy for failed connects. See
+// https://pkg.go.dev/github.com/cenkalti/backoff/v4 for more information about
+// backoff strategies. Default is an exponential backoff, starting with a
+// backoff time of 500ms, exponentially incremented by factor 1.5, with an
+// overall timeout of 10 seconds.
+func WithDialBackoff(backoffFactory func() backoff.BackOff) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		c.backoffFactory = backoffFactory
 		return nil
 	}
 }
 
+// WithRetries configures how often a request is retried if it fails. Default is no retry.
 func WithRetries(retries uint) func(r *requestOptions) error {
 	return func(r *requestOptions) error {
 		r.retries = retries
@@ -52,6 +76,7 @@ func WithRetries(retries uint) func(r *requestOptions) error {
 	}
 }
 
+// WithContext allows to cancel a request with a context.
 func WithContext(ctx context.Context) func(r *requestOptions) error {
 	return func(r *requestOptions) error {
 		r.ctx = ctx
@@ -123,6 +148,13 @@ func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []by
 	return err
 }
 
+func (c *client) Close() error {
+	if c.Conn != nil {
+		return c.Conn.Close()
+	}
+	return ErrorClosed
+}
+
 func parseTryConnectDo[T any](c *client, do func() (T, error), options ...func(*requestOptions) error) (T, error) {
 	o, err := parseRequestOptions(options...)
 	if err != nil {
@@ -168,6 +200,10 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	// ctx is for canceling the request, not the whole connection
 	// nolint:contextcheck
 	c.Conn, err = Dial(c.network, c.address, c.options...)
+	if err == nil {
+		// When connecting worked, the backoff starts at the beginning again
+		c.backoff.Reset()
+	}
 	return err
 }
 

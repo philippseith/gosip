@@ -6,9 +6,10 @@ import (
 	"time"
 )
 
-// Conn is a SIP client connection. It can be used to read and write SERCOS parameter values.
-// Its lifetime starts witth Dial() and ends when the user calls Close(),
-// the server does not anwser in timely manner (BusyTimeout) or the underlying net.Conn has been closed.
+// Conn is a SIP client connection. It can be used to read and write SERCOS
+// parameter values. Its lifetime starts with Dial() and ends when the user
+// calls Close(), the server does not answer in timely manner (BusyTimeout) or
+// the underlying net.Conn has been closed.
 type Conn interface {
 	ConnProperties
 
@@ -23,6 +24,30 @@ type Conn interface {
 	Close() error
 }
 
+// ConnProperties describes the properties of a Conn.
+//
+//	Connected() bool
+//
+// If the Conn is currently connected
+//
+//	BusyTimeout() time.Duration
+//
+// Time span after the server acknowledged to send a Busy response if it is not
+// able to respond to open requests.
+//
+//	LeaseTimeout() time.Duration
+//
+// Time span without requests after the server will close the connection. When
+// the WithKeepAlive() option is used, the connection will send a Ping request
+// shortly before this time span ends.
+//
+//	LastReceived() time.Time
+//
+// Timestamp when the last response from the server was received. The Client
+// uses this information to decide if to send a request over the current
+// connection or to open a new one. By this, timeouts caused by servers which do
+// not close the net.Conn directly after they decide to close the SIP connection
+// can be evaded.
 type ConnProperties interface {
 	Connected() bool
 
