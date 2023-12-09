@@ -6,11 +6,15 @@ import (
 	"time"
 )
 
+// Conn is a SIP client connection. It can be used to read and write SERCOS parameter values.
+// Its lifetime starts witth Dial() and ends when the user calls Close(),
+// the server does not anwser in timely manner (BusyTimeout) or the underlying net.Conn has been closed.
 type Conn interface {
 	Connected() bool
 
 	BusyTimeout() time.Duration
 	LeaseTimeout() time.Duration
+	LastReceived() time.Time
 
 	MessageTypes() []uint32
 
@@ -75,7 +79,7 @@ func (c *conn) Connected() bool {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return c.connectResponse.Version != 0
+	return c.Conn != nil && c.connectResponse.Version != 0
 }
 
 func (c *conn) BusyTimeout() time.Duration {
@@ -90,6 +94,13 @@ func (c *conn) LeaseTimeout() time.Duration {
 	defer c.mxCR.RUnlock()
 
 	return time.Millisecond * time.Duration(c.connectResponse.LeaseTimeout)
+}
+
+func (c *conn) LastReceived() time.Time {
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
+
+	return c.lastReceived
 }
 
 func (c *conn) MessageTypes() []uint32 {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync/atomic"
+	"time"
 )
 
 // sendLoop is sending the requests it gets from the request queue. Before it
@@ -76,8 +77,8 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 
 // dequeueRequest fetches a request from the request queue.
 func (c *conn) dequeueRequest() <-chan request {
-	c.mxState.RLock()
-	defer c.mxState.RUnlock()
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
 
 	if c.reqCh != nil {
 		return c.reqCh
@@ -127,6 +128,7 @@ func (c *conn) send(req request) error {
 
 // receiveAndDispatch reads from the net.Conn and dispatches
 // the responses according to the received transactionIDs.
+// receiveAndDispatch lives in the receiveLoop.
 func (c *conn) receiveAndDispatch() error {
 	c.mxRecv.Lock()
 	defer c.mxRecv.Unlock()
@@ -139,6 +141,9 @@ func (c *conn) receiveAndDispatch() error {
 	if h.MessageType == 0 { // TODO When does this happen?
 		return nil
 	}
+	// The header was read, this is the first point in time we can be sure the server has sent something
+	c.setLastReceived()
+	// The respFunc is executed on the receiving goroutine
 	var respFunc func(PDU) error
 	// prepare waiting for the respFunc to end
 	respFuncExecuted := make(chan struct{})
@@ -181,6 +186,13 @@ func (c *conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) e
 
 		return ex
 	}, nil
+}
+
+func (c *conn) setLastReceived() {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	c.lastReceived = time.Now()
 }
 
 func (c *conn) checkoutResponseChan(tID uint32) chan func(PDU) error {
@@ -231,15 +243,15 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 }
 
 func (c *conn) transactionAllowed() chan struct{} {
-	c.mxState.Lock()
-	defer c.mxState.Unlock()
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
 
 	return c.concurrentTransactionLimitCh
 }
 
 func (c *conn) transactionStarted() chan struct{} {
-	c.mxState.Lock()
-	defer c.mxState.Unlock()
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
 
 	return c.transactionStartedCh
 }

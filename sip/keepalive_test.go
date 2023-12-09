@@ -26,7 +26,7 @@ func TestNoKeepAlive(t *testing.T) {
 }
 
 func TestKeepAlive(t *testing.T) {
-	conn, err := sip.Dial("tcp", address, sip.SendKeepAlive())
+	conn, err := sip.Dial("tcp", address, sip.WithSendKeepAlive())
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)

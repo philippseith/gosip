@@ -1,15 +1,20 @@
 package sip
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/cenkalti/backoff/v4"
+)
 
 type connOptions struct {
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
 	sendKeepAlive                bool
+	backoffFactory               func() backoff.BackOff
 }
 
-func BusyTimeout(timeout int) func(c *connOptions) error {
+func WithBusyTimeout(timeout int) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
@@ -18,7 +23,7 @@ func BusyTimeout(timeout int) func(c *connOptions) error {
 	}
 }
 
-func LeaseTimeout(timeout int) func(c *connOptions) error {
+func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
@@ -27,9 +32,9 @@ func LeaseTimeout(timeout int) func(c *connOptions) error {
 	}
 }
 
-// ConcurrentTransactions limits the number of concurrent requests sent.
+// WithConcurrentTransactions limits the number of concurrent requests sent.
 // If the option is not given in Dial, the concurrency is not limited.
-func ConcurrentTransactions(ct uint) func(c *connOptions) error {
+func WithConcurrentTransactions(ct uint) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		if ct > 0 {
 			c.concurrentTransactionLimitCh = make(chan struct{}, ct)
@@ -38,21 +43,21 @@ func ConcurrentTransactions(ct uint) func(c *connOptions) error {
 	}
 }
 
-// SendKeepAlive configures the connection that it is sending Ping requests
+// WithSendKeepAlive configures the connection that it is sending Ping requests
 // shortly before the LeaseTimeout ends.
-func SendKeepAlive() func(c *connOptions) error {
+func WithSendKeepAlive() func(c *connOptions) error {
 	return func(c *connOptions) error {
 		c.sendKeepAlive = true
 		return nil
 	}
 }
 
-// MeasureNetworkLatencyICMP measures the network latency with an ICMP ping.
+// WithMeasureNetworkLatencyICMP measures the network latency with an ICMP ping.
 // If not set, the network latency is measured with S/IP Ping, which might lead
 // to different latency results, depending on the server implementation.
 // Note that ICMP ping requires specific system config options mentioned here:
 // https://github.com/prometheus-community/#supported-operating-systems
-func MeasureNetworkLatencyICMP() func(c *connOptions) error {
+func WithMeasureNetworkLatencyICMP() func(c *connOptions) error {
 	// TODO
 	return func(c *connOptions) error { return nil }
 }

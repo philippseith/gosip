@@ -25,7 +25,7 @@ func TestConnectNoServer(t *testing.T) {
 }
 
 func TestConnectTimeout(t *testing.T) {
-	conn, err := sip.Dial("tcp", address, sip.BusyTimeout(1))
+	conn, err := sip.Dial("tcp", address, sip.WithBusyTimeout(1))
 
 	assert.Nil(t, conn)
 	assert.Error(t, err)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type conn struct {
@@ -24,7 +25,8 @@ type conn struct {
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex
 
-	cancel context.CancelCauseFunc
+	cancel       context.CancelCauseFunc
+	lastReceived time.Time
 
 	mxState sync.RWMutex
 }
