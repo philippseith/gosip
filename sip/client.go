@@ -2,6 +2,7 @@ package sip
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -85,65 +86,64 @@ type client struct {
 }
 
 func (c *client) Ping(options ...func(*requestOptions) error) error {
-	return parseTryConnectDo(c, func() error {
-		return c.Conn.Ping()
+	_, err := parseTryConnectDo[struct{}](c, func() (struct{}, error) {
+		return struct{}{}, c.Conn.Ping()
 	}, options...)
+	return err
 }
 
 func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error) {
-	return read[ReadEverythingResponse](c, func() (ReadEverythingResponse, error) {
+	return parseTryConnectDo[ReadEverythingResponse](c, func() (ReadEverythingResponse, error) {
 		return c.Conn.ReadEverything(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error) {
-	return read[ReadOnlyDataResponse](c, func() (ReadOnlyDataResponse, error) {
+	return parseTryConnectDo[ReadOnlyDataResponse](c, func() (ReadOnlyDataResponse, error) {
 		return c.Conn.ReadOnlyData(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error) {
-	return read[ReadDescriptionResponse](c, func() (ReadDescriptionResponse, error) {
+	return parseTryConnectDo[ReadDescriptionResponse](c, func() (ReadDescriptionResponse, error) {
 		return c.Conn.ReadDescription(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error) {
-	return read[ReadDataStateResponse](c, func() (ReadDataStateResponse, error) {
+	return parseTryConnectDo[ReadDataStateResponse](c, func() (ReadDataStateResponse, error) {
 		return c.Conn.ReadDataState(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error {
-	return parseTryConnectDo(c, func() error {
-		return c.Conn.WriteData(slaveIndex, slaveExtension, idn, data)
+	_, err := parseTryConnectDo[struct{}](c, func() (struct{}, error) {
+		return struct{}{}, c.Conn.WriteData(slaveIndex, slaveExtension, idn, data)
 	}, options...)
-}
-
-func read[T any](c *client, do func() (T, error), options ...func(*requestOptions) error) (T, error) {
-	o, err := parseRequestOptions(options...)
-	if err != nil {
-		return *new(T), err
-	}
-	if err := c.tryConnect(o.ctx); err != nil {
-		return *new(T), err
-	}
-	return doWithCancel[T](o.ctx, do)
-}
-
-func parseTryConnectDo(c *client, do func() error, options ...func(*requestOptions) error) error {
-	o, err := parseRequestOptions(options...)
-	if err != nil {
-		return err
-	}
-	if err := c.tryConnect(o.ctx); err != nil {
-		return err
-	}
-	_, err = doWithCancel[struct{}](o.ctx,
-		func() (struct{}, error) {
-			return struct{}{}, do()
-		})
 	return err
+}
+
+func parseTryConnectDo[T any](c *client, do func() (T, error), options ...func(*requestOptions) error) (T, error) {
+	o, err := parseRequestOptions(options...)
+	if err != nil {
+		return *new(T), err
+	}
+
+	errs := make([]error, 0, o.retries+1)
+	for i := 0; i <= int(o.retries); i++ {
+
+		err := c.tryConnect(o.ctx)
+		if err != nil {
+			errs = append(errs, err)
+		} else {
+			t, err := doWithCancel[T](o.ctx, do)
+			if err == nil {
+				return t, nil
+			}
+			errs = append(errs, err)
+		}
+	}
+	return *new(T), errors.Join(errs...)
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
