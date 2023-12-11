@@ -3,6 +3,7 @@ package sip
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -110,6 +111,33 @@ type client struct {
 	backoff        backoff.BackOff
 }
 
+func (c *client) BusyTimeout() time.Duration {
+	if c.Conn == nil {
+		return time.Millisecond * time.Duration(0)
+	}
+	return c.Conn.BusyTimeout()
+}
+func (c *client) LeaseTimeout() time.Duration {
+	if c.Conn == nil {
+		return time.Millisecond * time.Duration(0)
+	}
+	return c.Conn.LeaseTimeout()
+}
+
+func (c *client) LastReceived() time.Time {
+	if c.Conn == nil {
+		return time.Time{}
+	}
+	return c.Conn.LastReceived()
+}
+
+func (c *client) MessageTypes() []uint32 {
+	if c.Conn == nil {
+		return nil
+	}
+	return c.Conn.MessageTypes()
+}
+
 func (c *client) Ping(options ...func(*requestOptions) error) error {
 	_, err := parseTryConnectDo[struct{}](c, func() (struct{}, error) {
 		return struct{}{}, c.Conn.Ping()
@@ -186,25 +214,29 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	}
 	if c.backoff == nil {
 		c.backoff = c.backoffFactory()
-	} else {
-		boff := c.backoff.NextBackOff()
-		if boff == backoff.Stop {
-			return ErrorRetriesExceeded
+	}
+	var spanSum time.Duration
+	// Try to connect until the
+	for {
+		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
+		// nolint:contextcheck
+		c.Conn, err = Dial(c.network, c.address, c.options...)
+		if err == nil {
+			// When connecting worked, the backoff has to start anew with the next request
+			c.backoff = nil
+			return nil
+		}
+		backoffSpan := c.backoff.NextBackOff()
+		if backoffSpan == backoff.Stop {
+			return errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(boff):
+		case <-time.After(backoffSpan):
+			spanSum += backoffSpan
 		}
 	}
-	// ctx is for canceling the request, not the whole connection
-	// nolint:contextcheck
-	c.Conn, err = Dial(c.network, c.address, c.options...)
-	if err == nil {
-		// When connecting worked, the backoff starts at the beginning again
-		c.backoff.Reset()
-	}
-	return err
 }
 
 func doWithCancel[T any](ctx context.Context, do func() (T, error)) (T, error) {

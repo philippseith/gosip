@@ -166,7 +166,10 @@ func (c *conn) receiveAndDispatch() error {
 					ErrorInvalidResponseMessageType,
 					h.MessageType, pdu.MessageType(), h.TransactionID)
 			}
-			return pdu.Read(c.timeoutReader)
+			// log.Printf("receiving %v, id: %v", pdu.MessageType(), h.TransactionID)
+			err = pdu.Read(c.timeoutReader)
+			// log.Printf("received %v, id: %v, err: %v", pdu.MessageType(), h.TransactionID, err)
+			return err
 		}
 	}
 	// Get the response channel of the request for this transactionID and send the respFunc to it
@@ -218,6 +221,7 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 			// Make sure header and PDU are sent in one package if possible
 			mtuWriter := bufio.NewWriterSize(conn, 1500) // Ethernet MTU is 1500
 			transactionId, err = c.writeHeader(mtuWriter, pdu)
+			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
 				return transactionId, err
 			}
@@ -232,7 +236,7 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 	defer close(req.ch)
 	// Push the request to the sendloop
 	if err := c.enqueueRequest(req); err != nil {
-		// The sendloop does not run anymore
+		// The sendLoop does not run anymore
 		return func(PDU) error { return err }
 	}
 	// wait for the function by which we can read the response

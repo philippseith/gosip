@@ -36,8 +36,9 @@ func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 // If the option is not given in Dial, the concurrency is not limited.
 func WithConcurrentTransactions(ct uint) func(c *connOptions) error {
 	return func(c *connOptions) error {
-		if ct > 0 {
-			c.concurrentTransactionLimitCh = make(chan struct{}, ct)
+		c.concurrentTransactionLimitCh = make(chan struct{}, ct)
+		for i := uint(0); i < ct; i++ {
+			c.concurrentTransactionLimitCh <- struct{}{}
 		}
 		return nil
 	}

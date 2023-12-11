@@ -6,10 +6,7 @@ func signal(getChan func() chan struct{}) error {
 	if ch == nil {
 		return ErrorClosed
 	}
-	_, ok := <-ch
-	if !ok {
-		return ErrorClosed
-	}
+	ch <- struct{}{}
 	return nil
 }
 
@@ -19,6 +16,9 @@ func wait(getChan func() chan struct{}) error {
 	if ch == nil {
 		return ErrorClosed
 	}
-	ch <- struct{}{}
+	_, ok := <-ch
+	if !ok {
+		return ErrorClosed
+	}
 	return nil
 }

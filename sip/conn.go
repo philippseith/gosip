@@ -69,9 +69,8 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 	c := &conn{
 		Conn: netConn,
 		connOptions: connOptions{
-			userBusyTimeout:              2000,
-			userLeaseTimeout:             10000,
-			concurrentTransactionLimitCh: make(chan struct{}, 5000), // Practically infinite queue size
+			userBusyTimeout:  2000,
+			userLeaseTimeout: 10000,
 		},
 		timeoutReader: &timeoutReader{reader: netConn},
 
@@ -79,6 +78,9 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
+	// Default: Allow practically infinite parallel transactions
+	_ = WithConcurrentTransactions(5000)(&c.connOptions)
+	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {
 			return nil, err
