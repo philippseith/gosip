@@ -13,13 +13,13 @@ import (
 type Conn interface {
 	ConnProperties
 
-	Ping() error
+	Ping() <-chan error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadEverythingResponse]
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadOnlyDataResponse]
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDescriptionResponse]
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDataStateResponse]
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) <-chan error
 
 	Close() error
 }
@@ -141,54 +141,54 @@ func (c *conn) MessageTypes() []uint32 {
 	return c.connectResponse.MessageTypes
 }
 
-func (c *conn) Ping() error {
-	return c.sendAndWaitForResponse(&PingRequest{})(&PingResponse{})
+func (c *conn) Ping() <-chan error {
+	ch := make(chan error, 1)
+	go func() {
+		respFunc := <-c.sendAndWaitForResponse(&PingRequest{})
+		ch <- respFunc((&PingResponse{}))
+		close(ch)
+	}()
+	return ch
 }
 
-func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
-	resp := ReadEverythingResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadEverythingResponse] {
+	ch := make(chan Result[*ReadEverythingResponse], 1)
+	go readResponse[*ReadEverythingRequest, *ReadEverythingResponse](c, slaveIndex, slaveExtension, idn, ch)
+	return ch
 }
 
-func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
-	resp := ReadOnlyDataResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadOnlyDataRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadOnlyDataResponse] {
+	ch := make(chan Result[*ReadOnlyDataResponse], 1)
+	go readResponse[*ReadOnlyDataRequest, *ReadOnlyDataResponse](c, slaveIndex, slaveExtension, idn, ch)
+	return ch
 }
 
-func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
-	resp := ReadDescriptionResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadDescriptionRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDescriptionResponse] {
+	ch := make(chan Result[*ReadDescriptionResponse], 1)
+	go readResponse[*ReadDescriptionRequest, *ReadDescriptionResponse](c, slaveIndex, slaveExtension, idn, ch)
+	return ch
 }
 
-func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
-	resp := ReadDataStateResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadDataStateRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDataStateResponse] {
+	ch := make(chan Result[*ReadDataStateResponse], 1)
+	go readResponse[*ReadDataStateRequest, *ReadDataStateResponse](c, slaveIndex, slaveExtension, idn, ch)
+	return ch
 }
 
-func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	return c.sendAndWaitForResponse(&WriteDataRequest{
-		writeDataRequest: writeDataRequest{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
-			IDN:            idn,
-			DataLength:     uint32(len(data)),
-		},
-		Data: data,
-	})(&WriteDataResponse{})
+func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) <-chan error {
+	ch := make(chan error, 1)
+	go func() {
+		respFunc := <-c.sendAndWaitForResponse(&WriteDataRequest{
+			writeDataRequest: writeDataRequest{
+				SlaveIndex:     uint16(slaveIndex),
+				SlaveExtension: uint16(slaveExtension),
+				IDN:            idn,
+				DataLength:     uint32(len(data)),
+			},
+			Data: data,
+		})
+		ch <- respFunc((&WriteDataResponse{}))
+		close(ch)
+	}()
+	return ch
 }

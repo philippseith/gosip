@@ -215,7 +215,21 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 	return h.TransactionID, h.Write(conn)
 }
 
-func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
+func readResponse[Request RequestPDU, Response PDU](c *conn, slaveIndex, slaveExtension int, idn uint32, ch chan Result[Response]) {
+	req := *new(Request)
+	req.Init(slaveIndex, slaveExtension, idn)
+	respFunc := <-c.sendAndWaitForResponse(req)
+	resp := new(Response)
+	err := respFunc(*resp)
+	if err != nil {
+		ch <- Err[Response](err)
+	} else {
+		ch <- Ok[Response](*resp)
+	}
+	close(ch)
+}
+
+func (c *conn) sendAndWaitForResponse(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
@@ -233,17 +247,18 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 		},
 		ch: make(chan func(PDU) error),
 	}
-	defer close(req.ch)
 	// Push the request to the sendloop
 	if err := c.enqueueRequest(req); err != nil {
 		// The sendLoop does not run anymore
-		return func(PDU) error { return err }
+		// Build an result chan which errors
+		ch := make(chan func(PDU) error, 1)
+		err := func(PDU) error { return err }
+		ch <- err
+		return ch
 	}
 	// wait for the function by which we can read the response
 	// (comes from the receiveLoop calling receiveAndDispatch which reads the header)
-	readResp := <-req.ch
-	// When this returns, req.ch can be closed (defer does this)
-	return readResp
+	return req.ch
 }
 
 func (c *conn) transactionAllowed() chan struct{} {

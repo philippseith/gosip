@@ -37,7 +37,7 @@ func TestPing(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	err = conn.Ping()
+	err = <-conn.Ping()
 
 	assert.NoError(t, err)
 }
@@ -50,7 +50,7 @@ func TestPingShortClosedConnection(t *testing.T) {
 
 	assert.NoError(t, conn.Close())
 
-	err = conn.Ping()
+	err = <-conn.Ping()
 
 	assert.Equal(t, sip.ErrorClosed, err)
 }

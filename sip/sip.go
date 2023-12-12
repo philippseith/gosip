@@ -23,3 +23,8 @@ type PDU interface {
 	Write(io.Writer) error
 	MessageType() MessageType
 }
+
+type RequestPDU interface {
+	PDU
+	Init(slaveIndex, slaveExtension int, idn uint32)
+}

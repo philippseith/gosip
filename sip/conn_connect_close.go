@@ -8,13 +8,13 @@ import (
 func (c *conn) connect() error {
 	// TODO detect network latency and add it to the busy timeout
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
-	readResponse := c.sendAndWaitForResponse(&ConnectRequest{
+	respFunc := <-c.sendAndWaitForResponse(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
 		LeaseTimeout: c.userLeaseTimeout,
 	})
 	respPdu := &ConnectResponse{}
-	if err := readResponse(respPdu); err != nil {
+	if err := respFunc(respPdu); err != nil {
 		return err
 	}
 	func() {
