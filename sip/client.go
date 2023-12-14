@@ -21,14 +21,14 @@ import (
 type Client interface {
 	ConnProperties
 
-	Ping(options ...func(*requestOptions) error) error
+	Ping(options ...func(*requestOptions) error) <-chan error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error)
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadEverythingResponse]
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadOnlyDataResponse]
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadDescriptionResponse]
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadDataStateResponse]
 
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) <-chan error
 
 	Close() error
 }
@@ -138,42 +138,40 @@ func (c *client) MessageTypes() []uint32 {
 	return c.Conn.MessageTypes()
 }
 
-func (c *client) Ping(options ...func(*requestOptions) error) error {
-	_, err := parseTryConnectDo[struct{}](c, func() (struct{}, error) {
-		return struct{}{}, c.Conn.Ping()
-	}, options...)
-	return err
+func (c *client) Ping(options ...func(*requestOptions) error) <-chan error {
+	return parseTryConnectDoWithErrChan(c, c.Conn.Ping, options...)
 }
 
-func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error) {
-	return parseTryConnectDo[ReadEverythingResponse](c, func() (ReadEverythingResponse, error) {
+func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadEverythingResponse] {
+	return parseTryConnectDo[*ReadEverythingResponse](c, func() <-chan Result[*ReadEverythingResponse] {
 		return c.Conn.ReadEverything(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
-func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error) {
-	return parseTryConnectDo[ReadOnlyDataResponse](c, func() (ReadOnlyDataResponse, error) {
+func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadOnlyDataResponse] {
+	return parseTryConnectDo[*ReadOnlyDataResponse](c, func() <-chan Result[*ReadOnlyDataResponse] {
 		return c.Conn.ReadOnlyData(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
-func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error) {
-	return parseTryConnectDo[ReadDescriptionResponse](c, func() (ReadDescriptionResponse, error) {
+func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadDescriptionResponse] {
+	return parseTryConnectDo[*ReadDescriptionResponse](c, func() <-chan Result[*ReadDescriptionResponse] {
 		return c.Conn.ReadDescription(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
-func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error) {
-	return parseTryConnectDo[ReadDataStateResponse](c, func() (ReadDataStateResponse, error) {
+func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadDataStateResponse] {
+	return parseTryConnectDo[*ReadDataStateResponse](c, func() <-chan Result[*ReadDataStateResponse] {
 		return c.Conn.ReadDataState(slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
-func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error {
-	_, err := parseTryConnectDo[struct{}](c, func() (struct{}, error) {
-		return struct{}{}, c.Conn.WriteData(slaveIndex, slaveExtension, idn, data)
-	}, options...)
-	return err
+func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) <-chan error {
+	return parseTryConnectDoWithErrChan(c,
+		func() <-chan error {
+			return c.Conn.WriteData(slaveIndex, slaveExtension, idn, data)
+		},
+		options...)
 }
 
 func (c *client) Close() error {
@@ -183,27 +181,49 @@ func (c *client) Close() error {
 	return ErrorClosed
 }
 
-func parseTryConnectDo[T any](c *client, do func() (T, error), options ...func(*requestOptions) error) (T, error) {
-	o, err := parseRequestOptions(options...)
-	if err != nil {
-		return *new(T), err
-	}
+func parseTryConnectDoWithErrChan(c *client, do func() <-chan error, options ...func(*requestOptions) error) <-chan error {
+	return castInChan[Result[struct{}], error](
+		parseTryConnectDo[struct{}](c, func() <-chan Result[struct{}] {
+			return castInChan[error, Result[struct{}]](
+				do(),
+				func(err error) Result[struct{}] {
+					return Err[struct{}](err)
+				}, 1)
+		}, options...),
+		func(r Result[struct{}]) error {
+			return r.Err
+		}, 1)
+}
 
-	errs := make([]error, 0, o.retries+1)
-	for i := 0; i <= int(o.retries); i++ {
+func parseTryConnectDo[T any](c *client, do func() <-chan Result[T], options ...func(*requestOptions) error) <-chan Result[T] {
+	ch := make(chan Result[T], 1)
+	go func() {
+		defer close(ch)
 
-		err := c.tryConnect(o.ctx)
+		requestSettings, err := parseRequestOptions(options...)
 		if err != nil {
-			errs = append(errs, err)
-		} else {
-			t, err := doWithCancel[T](o.ctx, do)
-			if err == nil {
-				return t, nil
-			}
-			errs = append(errs, err)
+			ch <- Err[T](err)
+			return
 		}
-	}
-	return *new(T), errors.Join(errs...)
+
+		errs := make([]error, 0, requestSettings.retries+1)
+		for i := 0; i <= int(requestSettings.retries); i++ {
+
+			err := c.tryConnect(requestSettings.ctx)
+			if err != nil {
+				errs = append(errs, err)
+			} else {
+				r := <-doWithCancel[T](requestSettings.ctx, do)
+				if err == nil {
+					ch <- r
+					return
+				}
+				errs = append(errs, err)
+			}
+		}
+		ch <- Err[T](errors.Join(errs...))
+	}()
+	return ch
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
@@ -239,21 +259,19 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	}
 }
 
-func doWithCancel[T any](ctx context.Context, do func() (T, error)) (T, error) {
-	ch := make(chan Result[T])
-	defer close(ch)
-
+func doWithCancel[T any](ctx context.Context, do func() <-chan Result[T]) <-chan Result[T] {
+	ch := make(chan Result[T], 1)
 	go func() {
-		r := Result[T]{}
-		r.Ok, r.Err = do()
-		ch <- r
+		defer close(ch)
+
+		select {
+		case <-ctx.Done():
+			ch <- Err[T](ctx.Err())
+		case r := <-do():
+			ch <- r
+		}
 	}()
-	select {
-	case <-ctx.Done():
-		return *new(T), ctx.Err()
-	case r := <-ch:
-		return r.Ok, r.Err
-	}
+	return ch
 }
 
 // func goWithCancel[T any](ctx context.Context, f func() (T, error)) <-chan Result[T] {
