@@ -182,9 +182,9 @@ func (c *client) Close() error {
 }
 
 func parseTryConnectDoWithErrChan(c *client, do func() <-chan error, options ...func(*requestOptions) error) <-chan error {
-	return castInChan[Result[struct{}], error](
+	return mapChan[Result[struct{}], error](
 		parseTryConnectDo[struct{}](c, func() <-chan Result[struct{}] {
-			return castInChan[error, Result[struct{}]](
+			return mapChan[error, Result[struct{}]](
 				do(),
 				func(err error) Result[struct{}] {
 					return Err[struct{}](err)

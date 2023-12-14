@@ -23,7 +23,7 @@ func wait(getChan func() chan struct{}) error {
 	return nil
 }
 
-func castInChan[T any, V any](chT <-chan T, mapFunc func(T) V, capacity int) <-chan V {
+func mapChan[T any, V any](chT <-chan T, mapFunc func(T) V, capacity int) <-chan V {
 	chV := make(chan V, capacity)
 	go func() {
 		defer close(chV)
