@@ -215,11 +215,17 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 	return h.TransactionID, h.Write(conn)
 }
 
-func readResponse[Request RequestPDU, Response PDU](c *conn, slaveIndex, slaveExtension int, idn uint32, ch chan Result[Response]) {
+func sendRequestWaitForResponseAndRead[Request RequestPDU, Response PDU](c *conn, slaveIndex, slaveExtension int, idn uint32, ch chan Result[Response]) {
 	req := *new(Request)
 	req.Init(slaveIndex, slaveExtension, idn)
-	respFunc := <-c.sendAndWaitForResponse(req)
+	// Send the request and
+	// wait for the function by which we can read the response
+	// (it comes from the receiveLoop calling receiveAndDispatch which reads the header)
+	// The receiveLoop blocks read access to the net.Conn until the respFunc is executed
+	respFunc := <-c.sendRequest(req)
+	// Initialize the Response PDU struct
 	resp := new(Response)
+	// Fill it by using PDU.Read()
 	err := respFunc(*resp)
 	if err != nil {
 		ch <- Err[Response](err)
@@ -229,7 +235,11 @@ func readResponse[Request RequestPDU, Response PDU](c *conn, slaveIndex, slaveEx
 	close(ch)
 }
 
-func (c *conn) sendAndWaitForResponse(pdu PDU) <-chan func(PDU) error {
+// sendRequest enqueues a request at the sendLoop.
+// The sendLoop generates a transactionID for the request and sends it over the net.Conn.
+// Then, the sendLoop stores request.ch under this transactionID.
+// sendRequest returns request.ch to readResponse
+func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
@@ -256,8 +266,6 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) <-chan func(PDU) error {
 		ch <- err
 		return ch
 	}
-	// wait for the function by which we can read the response
-	// (comes from the receiveLoop calling receiveAndDispatch which reads the header)
 	return req.ch
 }
 

@@ -144,7 +144,7 @@ func (c *conn) MessageTypes() []uint32 {
 func (c *conn) Ping() <-chan error {
 	ch := make(chan error, 1)
 	go func() {
-		respFunc := <-c.sendAndWaitForResponse(&PingRequest{})
+		respFunc := <-c.sendRequest(&PingRequest{})
 		ch <- respFunc((&PingResponse{}))
 		close(ch)
 	}()
@@ -153,32 +153,32 @@ func (c *conn) Ping() <-chan error {
 
 func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadEverythingResponse] {
 	ch := make(chan Result[*ReadEverythingResponse], 1)
-	go readResponse[*ReadEverythingRequest, *ReadEverythingResponse](c, slaveIndex, slaveExtension, idn, ch)
+	go sendRequestWaitForResponseAndRead[*ReadEverythingRequest, *ReadEverythingResponse](c, slaveIndex, slaveExtension, idn, ch)
 	return ch
 }
 
 func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadOnlyDataResponse] {
 	ch := make(chan Result[*ReadOnlyDataResponse], 1)
-	go readResponse[*ReadOnlyDataRequest, *ReadOnlyDataResponse](c, slaveIndex, slaveExtension, idn, ch)
+	go sendRequestWaitForResponseAndRead[*ReadOnlyDataRequest, *ReadOnlyDataResponse](c, slaveIndex, slaveExtension, idn, ch)
 	return ch
 }
 
 func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDescriptionResponse] {
 	ch := make(chan Result[*ReadDescriptionResponse], 1)
-	go readResponse[*ReadDescriptionRequest, *ReadDescriptionResponse](c, slaveIndex, slaveExtension, idn, ch)
+	go sendRequestWaitForResponseAndRead[*ReadDescriptionRequest, *ReadDescriptionResponse](c, slaveIndex, slaveExtension, idn, ch)
 	return ch
 }
 
 func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDataStateResponse] {
 	ch := make(chan Result[*ReadDataStateResponse], 1)
-	go readResponse[*ReadDataStateRequest, *ReadDataStateResponse](c, slaveIndex, slaveExtension, idn, ch)
+	go sendRequestWaitForResponseAndRead[*ReadDataStateRequest, *ReadDataStateResponse](c, slaveIndex, slaveExtension, idn, ch)
 	return ch
 }
 
 func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) <-chan error {
 	ch := make(chan error, 1)
 	go func() {
-		respFunc := <-c.sendAndWaitForResponse(&WriteDataRequest{
+		respFunc := <-c.sendRequest(&WriteDataRequest{
 			writeDataRequest: writeDataRequest{
 				SlaveIndex:     uint16(slaveIndex),
 				SlaveExtension: uint16(slaveExtension),
