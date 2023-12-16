@@ -139,7 +139,10 @@ func (c *client) MessageTypes() []uint32 {
 }
 
 func (c *client) Ping(options ...func(*requestOptions) error) <-chan error {
-	return parseTryConnectDoWithErrChan(c, c.Conn.Ping, options...)
+	return parseTryConnectDoWithErrChan(c, func() <-chan error {
+		// Do not inline. c.Conn is not set yet
+		return c.Conn.Ping()
+	}, options...)
 }
 
 func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[*ReadEverythingResponse] {

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var address = "192.168.2.136:35021"
+var address = "127.0.0.5:35021"
 
 func TestConnect(t *testing.T) {
 	conn, err := sip.Dial("tcp", address)
@@ -19,7 +19,11 @@ func TestConnect(t *testing.T) {
 
 func TestConnectNoServer(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35022")
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.Error(t, err)
 }
