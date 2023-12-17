@@ -16,6 +16,7 @@ import (
 // Ping, ReadXXX, WriteData work like the Conn methods but try to reconnect when
 // the underlying connection has been closed meanwhile. Their further behavior
 // can be configured with options.
+// The GoXXX variants of the methods work asynchronously by returning a channel.
 //
 // Close closes the currently open connection, if there is any yet.
 type Client interface {
@@ -41,7 +42,7 @@ type Client interface {
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can
-// be configured by the WithDialBackoff option. If the option is not given, the
+// be configured with the WithDialBackoff option. If the option is not given, the
 // backoff strategy is an exponential backoff, starting with a backoff time of
 // 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
 // seconds. All other options are ignored.
@@ -145,6 +146,44 @@ func (c *client) MessageTypes() []uint32 {
 	return c.Conn.MessageTypes()
 }
 
+func (c *client) Ping(options ...func(*requestOptions) error) error {
+	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, c.Conn.Ping(ctx)
+	}, options...)
+	return err
+}
+
+func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error) {
+	return parseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
+		return c.Conn.ReadEverything(ctx, slaveIndex, slaveExtension, idn)
+	}, options...)
+}
+
+func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error) {
+	return parseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
+		return c.Conn.ReadOnlyData(ctx, slaveIndex, slaveExtension, idn)
+	}, options...)
+}
+
+func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error) {
+	return parseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
+		return c.Conn.ReadDescription(ctx, slaveIndex, slaveExtension, idn)
+	}, options...)
+}
+
+func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error) {
+	return parseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
+		return c.Conn.ReadDataState(ctx, slaveIndex, slaveExtension, idn)
+	}, options...)
+}
+
+func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error {
+	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data)
+	}, options...)
+	return err
+}
+
 func (c *client) GoPing(options ...func(*requestOptions) error) <-chan error {
 	return goParseTryConnectDoWithErrChan(c, func(ctx context.Context) error {
 		// Do not inline. c.Conn is not set yet
@@ -180,8 +219,7 @@ func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []
 	return goParseTryConnectDoWithErrChan(c,
 		func(ctx context.Context) error {
 			return c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data)
-		},
-		options...)
+		}, options...)
 }
 
 func (c *client) Close() error {
