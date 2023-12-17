@@ -2,6 +2,7 @@ package sip_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"log"
 	"sync"
@@ -20,10 +21,10 @@ func TestReadEverything(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	result := <-conn.ReadEverything(0, 0, 1)
+	resp, err := conn.ReadEverything(context.Background(), 0, 0, 1)
 
-	assert.NoError(t, result.Err)
-	assert.Equal(t, uint32(2), result.Ok.DataLength)
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(2), resp.DataLength)
 }
 
 func TestReadOnlyData(t *testing.T) {
@@ -35,10 +36,10 @@ func TestReadOnlyData(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	result := <-conn.ReadOnlyData(0, 0, 1)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1)
 
-	assert.NoError(t, result.Err)
-	assert.Equal(t, uint32(2), result.Ok.DataLength)
+	assert.NoError(t, err)
+	assert.Equal(t, uint32(2), resp.DataLength)
 }
 
 func TestReadDescription(t *testing.T) {
@@ -50,10 +51,10 @@ func TestReadDescription(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	result := <-conn.ReadDescription(0, 0, 1)
+	resp, err := conn.ReadDescription(context.Background(), 0, 0, 1)
 
-	assert.NoError(t, result.Err)
-	assert.Equal(t, []byte("us"), result.Ok.Unit)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("us"), resp.Unit)
 }
 
 func TestReadDataState(t *testing.T) {
@@ -65,9 +66,9 @@ func TestReadDataState(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	result := <-conn.ReadDataState(0, 0, 1)
+	_, err = conn.ReadDataState(context.Background(), 0, 0, 1)
 
-	assert.NoError(t, result.Err)
+	assert.NoError(t, err)
 }
 
 func BenchmarkReadParallel(t *testing.B) {
@@ -84,18 +85,18 @@ func BenchmarkReadParallel(t *testing.B) {
 
 	d1 := make(chan []byte)
 	go func() {
-		result := <-conn.ReadOnlyData(0, 0, 17)
+		resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
 
-		assert.NoError(t, result.Err)
+		assert.NoError(t, err)
 
-		d1 <- result.Ok.Data
+		d1 <- resp.Data
 	}()
 	d2 := make(chan []byte)
 	go func() {
-		result := <-conn.ReadOnlyData(0, 0, 17)
+		resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
 
-		assert.NoError(t, result.Err)
-		d2 <- result.Ok.Data
+		assert.NoError(t, err)
+		d2 <- resp.Data
 	}()
 	b1 := <-d1
 	b2 := <-d2
@@ -111,13 +112,13 @@ func TestReadS192(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	result := <-conn.ReadOnlyData(0, 0, 192)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 192)
 
-	assert.NoError(t, result.Err)
-	assert.NotEqual(t, 0, result.Ok.DataLength)
+	assert.NoError(t, err)
+	assert.NotEqual(t, 0, resp.DataLength)
 
-	idns := make([]uint32, result.Ok.DataLength/4)
-	assert.NoError(t, binary.Read(bytes.NewReader(result.Ok.Data), binary.LittleEndian, idns))
+	idns := make([]uint32, resp.DataLength/4)
+	assert.NoError(t, binary.Read(bytes.NewReader(resp.Data), binary.LittleEndian, idns))
 
 	log.Print("start")
 	var wg sync.WaitGroup
@@ -125,8 +126,8 @@ func TestReadS192(t *testing.T) {
 	for _, i := range idns {
 		idn := i
 		go func() {
-			result := <-conn.ReadEverything(0, 0, idn)
-			assert.NoError(t, result.Err)
+			_, err := conn.ReadEverything(context.Background(), 0, 0, idn)
+			assert.NoError(t, err)
 			wg.Done()
 		}()
 	}

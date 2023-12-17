@@ -1,6 +1,7 @@
 package sip_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,14 +15,14 @@ func TestNoKeepAlive(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 	assert.NoError(t, err)
 
 	// let the LeaseTimeout elapse
 	<-time.After(conn.LeaseTimeout() + 100*time.Millisecond)
 
 	// The connection should be closed now and Ping should err
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 	assert.Error(t, err)
 }
 
@@ -31,13 +32,13 @@ func TestKeepAlive(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 	assert.NoError(t, err)
 
 	// let the LeaseTimeout elapse
 	<-time.After(conn.LeaseTimeout() + 100*time.Millisecond)
 
 	// The connection should be held open by the KeepAlive Pin
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 	assert.NoError(t, err)
 }

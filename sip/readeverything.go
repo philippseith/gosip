@@ -11,12 +11,6 @@ type ReadEverythingRequest struct {
 	IDN            uint32
 }
 
-func (r *ReadEverythingRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
-	r.SlaveIndex = uint16(slaveIndex)
-	r.SlaveExtension = uint16(slaveExtension)
-	r.IDN = idn
-}
-
 func (r *ReadEverythingRequest) Read(reader io.Reader) error {
 	return binary.Read(reader, binary.LittleEndian, r)
 }
@@ -92,4 +86,12 @@ func (r *ReadEverythingResponse) Write(writer io.Writer) error {
 
 func (r *ReadEverythingResponse) MessageType() MessageType {
 	return ReadEverythingResponseMsgType
+}
+
+func newReadEverythingPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadEverythingRequest, *ReadEverythingResponse) {
+	return &ReadEverythingRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadEverythingResponse{}
 }

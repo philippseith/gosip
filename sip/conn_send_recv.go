@@ -215,24 +215,23 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 	return h.TransactionID, h.Write(conn)
 }
 
-func sendRequestWaitForResponseAndRead[Request RequestPDU, Response PDU](c *conn, slaveIndex, slaveExtension int, idn uint32, ch chan Result[Response]) {
-	req := *new(Request)
-	req.Init(slaveIndex, slaveExtension, idn)
+func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *conn, req PDU, resp Response) error {
 	// Send the request and
 	// wait for the function by which we can read the response
 	// (it comes from the receiveLoop calling receiveAndDispatch which reads the header)
 	// The receiveLoop blocks read access to the net.Conn until the respFunc is executed
-	respFunc := <-c.sendRequest(req)
-	// Initialize the Response PDU struct
-	resp := new(Response)
-	// Fill it by using PDU.Read()
-	err := respFunc(*resp)
-	if err != nil {
-		ch <- Err[Response](err)
-	} else {
-		ch <- Ok[Response](*resp)
+	select {
+	case respFunc := <-c.sendRequest(req):
+		// Fill it by using PDU.Read()
+		return respFunc(resp)
+	case <-ctx.Done():
+		go func() {
+			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block
+			respFunc := <-c.sendRequest(req)
+			_ = respFunc(resp)
+		}()
+		return ctx.Err()
 	}
-	close(ch)
 }
 
 // sendRequest enqueues a request at the sendLoop.

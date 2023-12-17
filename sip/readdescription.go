@@ -79,3 +79,11 @@ func (r *ReadDescriptionResponse) Write(writer io.Writer) error {
 func (r *ReadDescriptionResponse) MessageType() MessageType {
 	return ReadDescriptionResponseMsgType
 }
+
+func newReadDescriptionPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadDescriptionRequest, *ReadDescriptionResponse) {
+	return &ReadDescriptionRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadDescriptionResponse{}
+}

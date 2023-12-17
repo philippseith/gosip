@@ -62,3 +62,11 @@ func (r *ReadOnlyDataResponse) Write(writer io.Writer) error {
 func (r *ReadOnlyDataResponse) MessageType() MessageType {
 	return ReadOnlyDataResponseMsgType
 }
+
+func newReadOnlyDataPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadOnlyDataRequest, *ReadOnlyDataResponse) {
+	return &ReadOnlyDataRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadOnlyDataResponse{}
+}

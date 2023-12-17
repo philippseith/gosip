@@ -1,6 +1,7 @@
 package sip_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/philippseith/gosip/sip"
@@ -41,7 +42,7 @@ func TestPing(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 
 	assert.NoError(t, err)
 }
@@ -54,7 +55,7 @@ func TestPingShortClosedConnection(t *testing.T) {
 
 	assert.NoError(t, conn.Close())
 
-	err = <-conn.Ping()
+	err = conn.Ping(context.Background())
 
 	assert.Equal(t, sip.ErrorClosed, err)
 }

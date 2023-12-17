@@ -13,13 +13,13 @@ import (
 type Conn interface {
 	ConnProperties
 
-	Ping() <-chan error
+	Ping(ctx context.Context) error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadEverythingResponse]
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadOnlyDataResponse]
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDescriptionResponse]
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDataStateResponse]
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) <-chan error
+	ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
+	WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error
 
 	Close() error
 }
@@ -141,54 +141,42 @@ func (c *conn) MessageTypes() []uint32 {
 	return c.connectResponse.MessageTypes
 }
 
-func (c *conn) Ping() <-chan error {
-	ch := make(chan error, 1)
-	go func() {
-		respFunc := <-c.sendRequest(&PingRequest{})
-		ch <- respFunc((&PingResponse{}))
-		close(ch)
-	}()
-	return ch
+func (c *conn) Ping(ctx context.Context) error {
+	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
 }
 
-func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadEverythingResponse] {
-	ch := make(chan Result[*ReadEverythingResponse], 1)
-	go sendRequestWaitForResponseAndRead[*ReadEverythingRequest, *ReadEverythingResponse](c, slaveIndex, slaveExtension, idn, ch)
-	return ch
+func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadOnlyDataResponse] {
-	ch := make(chan Result[*ReadOnlyDataResponse], 1)
-	go sendRequestWaitForResponseAndRead[*ReadOnlyDataRequest, *ReadOnlyDataResponse](c, slaveIndex, slaveExtension, idn, ch)
-	return ch
+func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDescriptionResponse] {
-	ch := make(chan Result[*ReadDescriptionResponse], 1)
-	go sendRequestWaitForResponseAndRead[*ReadDescriptionRequest, *ReadDescriptionResponse](c, slaveIndex, slaveExtension, idn, ch)
-	return ch
+func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) <-chan Result[*ReadDataStateResponse] {
-	ch := make(chan Result[*ReadDataStateResponse], 1)
-	go sendRequestWaitForResponseAndRead[*ReadDataStateRequest, *ReadDataStateResponse](c, slaveIndex, slaveExtension, idn, ch)
-	return ch
+func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) <-chan error {
-	ch := make(chan error, 1)
-	go func() {
-		respFunc := <-c.sendRequest(&WriteDataRequest{
-			writeDataRequest: writeDataRequest{
-				SlaveIndex:     uint16(slaveIndex),
-				SlaveExtension: uint16(slaveExtension),
-				IDN:            idn,
-				DataLength:     uint32(len(data)),
-			},
-			Data: data,
-		})
-		ch <- respFunc((&WriteDataResponse{}))
-		close(ch)
-	}()
-	return ch
+func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	return sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
+		writeDataRequest: writeDataRequest{
+			SlaveIndex:     uint16(slaveIndex),
+			SlaveExtension: uint16(slaveExtension),
+			IDN:            idn,
+			DataLength:     uint32(len(data)),
+		},
+		Data: data,
+	}, &WriteDataResponse{})
 }

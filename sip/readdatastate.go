@@ -44,3 +44,11 @@ func (r *ReadDataStateResponse) Write(writer io.Writer) error {
 func (r *ReadDataStateResponse) MessageType() MessageType {
 	return ReadDataStateResponseMsgType
 }
+
+func newReadDataStatePDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadDataStateRequest, *ReadDataStateResponse) {
+	return &ReadDataStateRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadDataStateResponse{}
+}
