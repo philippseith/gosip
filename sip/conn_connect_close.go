@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -34,7 +35,9 @@ func (c *conn) connect() error {
 func (c *conn) sendKeepAliveLoop() {
 	loopTime := c.LeaseTimeout() - 100*time.Millisecond
 	<-time.After(loopTime)
-	if err := c.Ping(); err != nil {
+
+	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+	if err := c.Ping(ctx); err != nil {
 		log.Printf("sendKeepAlive: %v", err)
 		return
 	}
@@ -43,7 +46,8 @@ func (c *conn) sendKeepAliveLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := c.Ping(); err != nil {
+		ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+		if err := c.Ping(ctx); err != nil {
 			log.Printf("sendKeepAlive: %v", err)
 			break
 		}
