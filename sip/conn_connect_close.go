@@ -36,8 +36,10 @@ func (c *conn) sendKeepAliveLoop() {
 	loopTime := c.LeaseTimeout() - 100*time.Millisecond
 	<-time.After(loopTime)
 
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
-	if err := c.Ping(ctx); err != nil {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+	err := c.Ping(ctx)
+	cancel()
+	if err != nil {
 		log.Printf("sendKeepAlive: %v", err)
 		return
 	}
@@ -46,8 +48,10 @@ func (c *conn) sendKeepAliveLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
-		if err := c.Ping(ctx); err != nil {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+		err := c.Ping(ctx)
+		cancel()
+		if err != nil {
 			log.Printf("sendKeepAlive: %v", err)
 			break
 		}
