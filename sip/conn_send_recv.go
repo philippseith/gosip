@@ -215,7 +215,30 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 	return h.TransactionID, h.Write(conn)
 }
 
-func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
+func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *conn, req PDU, resp Response) error {
+	// Send the request and
+	// wait for the function by which we can read the response
+	// (it comes from the receiveLoop calling receiveAndDispatch which reads the header)
+	// The receiveLoop blocks read access to the net.Conn until the respFunc is executed
+	select {
+	case respFunc := <-c.sendRequest(req):
+		// Fill it by using PDU.Read()
+		return respFunc(resp)
+	case <-ctx.Done():
+		go func() {
+			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block
+			respFunc := <-c.sendRequest(req)
+			_ = respFunc(resp)
+		}()
+		return ctx.Err()
+	}
+}
+
+// sendRequest enqueues a request at the sendLoop.
+// The sendLoop generates a transactionID for the request and sends it over the net.Conn.
+// Then, the sendLoop stores request.ch under this transactionID.
+// sendRequest returns request.ch to readResponse
+func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
@@ -233,17 +256,16 @@ func (c *conn) sendAndWaitForResponse(pdu PDU) func(PDU) error {
 		},
 		ch: make(chan func(PDU) error),
 	}
-	defer close(req.ch)
 	// Push the request to the sendloop
 	if err := c.enqueueRequest(req); err != nil {
 		// The sendLoop does not run anymore
-		return func(PDU) error { return err }
+		// Build an result chan which errors
+		ch := make(chan func(PDU) error, 1)
+		err := func(PDU) error { return err }
+		ch <- err
+		return ch
 	}
-	// wait for the function by which we can read the response
-	// (comes from the receiveLoop calling receiveAndDispatch which reads the header)
-	readResp := <-req.ch
-	// When this returns, req.ch can be closed (defer does this)
-	return readResp
+	return req.ch
 }
 
 func (c *conn) transactionAllowed() chan struct{} {

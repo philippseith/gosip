@@ -11,6 +11,12 @@ type ReadOnlyDataRequest struct {
 	IDN            uint32
 }
 
+func (r *ReadOnlyDataRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
+	r.SlaveIndex = uint16(slaveIndex)
+	r.SlaveExtension = uint16(slaveExtension)
+	r.IDN = idn
+}
+
 func (r *ReadOnlyDataRequest) Read(reader io.Reader) error {
 	return binary.Read(reader, binary.LittleEndian, r)
 }
@@ -55,4 +61,12 @@ func (r *ReadOnlyDataResponse) Write(writer io.Writer) error {
 
 func (r *ReadOnlyDataResponse) MessageType() MessageType {
 	return ReadOnlyDataResponseMsgType
+}
+
+func newReadOnlyDataPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadOnlyDataRequest, *ReadOnlyDataResponse) {
+	return &ReadOnlyDataRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadOnlyDataResponse{}
 }

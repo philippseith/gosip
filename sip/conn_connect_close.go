@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -8,13 +9,13 @@ import (
 func (c *conn) connect() error {
 	// TODO detect network latency and add it to the busy timeout
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
-	readResponse := c.sendAndWaitForResponse(&ConnectRequest{
+	respFunc := <-c.sendRequest(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
 		LeaseTimeout: c.userLeaseTimeout,
 	})
 	respPdu := &ConnectResponse{}
-	if err := readResponse(respPdu); err != nil {
+	if err := respFunc(respPdu); err != nil {
 		return err
 	}
 	func() {
@@ -34,7 +35,11 @@ func (c *conn) connect() error {
 func (c *conn) sendKeepAliveLoop() {
 	loopTime := c.LeaseTimeout() - 100*time.Millisecond
 	<-time.After(loopTime)
-	if err := c.Ping(); err != nil {
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+	err := c.Ping(ctx)
+	cancel()
+	if err != nil {
 		log.Printf("sendKeepAlive: %v", err)
 		return
 	}
@@ -43,7 +48,10 @@ func (c *conn) sendKeepAliveLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := c.Ping(); err != nil {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
+		err := c.Ping(ctx)
+		cancel()
+		if err != nil {
 			log.Printf("sendKeepAlive: %v", err)
 			break
 		}

@@ -13,13 +13,13 @@ import (
 type Conn interface {
 	ConnProperties
 
-	Ping() error
+	Ping(ctx context.Context) error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error
+	ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
+	WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error
 
 	Close() error
 }
@@ -141,48 +141,36 @@ func (c *conn) MessageTypes() []uint32 {
 	return c.connectResponse.MessageTypes
 }
 
-func (c *conn) Ping() error {
-	return c.sendAndWaitForResponse(&PingRequest{})(&PingResponse{})
+func (c *conn) Ping(ctx context.Context) error {
+	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
 }
 
-func (c *conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
-	resp := ReadEverythingResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
-	resp := ReadOnlyDataResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadOnlyDataRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
-	resp := ReadDescriptionResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadDescriptionRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
-	resp := ReadDataStateResponse{}
-	return resp, c.sendAndWaitForResponse(&ReadDataStateRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
+	return *resp, err
 }
 
-func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	return c.sendAndWaitForResponse(&WriteDataRequest{
+func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	return sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			SlaveIndex:     uint16(slaveIndex),
 			SlaveExtension: uint16(slaveExtension),
@@ -190,5 +178,5 @@ func (c *conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte
 			DataLength:     uint32(len(data)),
 		},
 		Data: data,
-	})(&WriteDataResponse{})
+	}, &WriteDataResponse{})
 }

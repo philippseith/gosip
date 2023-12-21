@@ -11,6 +11,12 @@ type ReadDescriptionRequest struct {
 	IDN            uint32
 }
 
+func (r *ReadDescriptionRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
+	r.SlaveIndex = uint16(slaveIndex)
+	r.SlaveExtension = uint16(slaveExtension)
+	r.IDN = idn
+}
+
 func (r *ReadDescriptionRequest) Read(reader io.Reader) error {
 	return binary.Read(reader, binary.LittleEndian, r)
 }
@@ -72,4 +78,12 @@ func (r *ReadDescriptionResponse) Write(writer io.Writer) error {
 
 func (r *ReadDescriptionResponse) MessageType() MessageType {
 	return ReadDescriptionResponseMsgType
+}
+
+func newReadDescriptionPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadDescriptionRequest, *ReadDescriptionResponse) {
+	return &ReadDescriptionRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadDescriptionResponse{}
 }

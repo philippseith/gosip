@@ -2,6 +2,7 @@ package sip_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"log"
 	"sync"
@@ -20,7 +21,7 @@ func TestReadEverything(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.ReadEverything(0, 0, 1)
+	resp, err := conn.ReadEverything(context.Background(), 0, 0, 1)
 
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(2), resp.DataLength)
@@ -35,7 +36,7 @@ func TestReadOnlyData(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.ReadOnlyData(0, 0, 1)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1)
 
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(2), resp.DataLength)
@@ -50,7 +51,7 @@ func TestReadDescription(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.ReadDescription(0, 0, 1)
+	resp, err := conn.ReadDescription(context.Background(), 0, 0, 1)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("us"), resp.Unit)
@@ -65,7 +66,7 @@ func TestReadDataState(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	_, err = conn.ReadDataState(0, 0, 1)
+	_, err = conn.ReadDataState(context.Background(), 0, 0, 1)
 
 	assert.NoError(t, err)
 }
@@ -84,7 +85,7 @@ func BenchmarkReadParallel(t *testing.B) {
 
 	d1 := make(chan []byte)
 	go func() {
-		resp, err := conn.ReadOnlyData(0, 0, 17)
+		resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
 
 		assert.NoError(t, err)
 
@@ -92,7 +93,7 @@ func BenchmarkReadParallel(t *testing.B) {
 	}()
 	d2 := make(chan []byte)
 	go func() {
-		resp, err := conn.ReadOnlyData(0, 0, 17)
+		resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
 
 		assert.NoError(t, err)
 		d2 <- resp.Data
@@ -111,7 +112,7 @@ func TestReadS192(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.ReadOnlyData(0, 0, 192)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 192)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, resp.DataLength)
@@ -125,7 +126,7 @@ func TestReadS192(t *testing.T) {
 	for _, i := range idns {
 		idn := i
 		go func() {
-			_, err = conn.ReadEverything(0, 0, idn)
+			_, err := conn.ReadEverything(context.Background(), 0, 0, idn)
 			assert.NoError(t, err)
 			wg.Done()
 		}()

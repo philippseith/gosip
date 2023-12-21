@@ -22,3 +22,15 @@ func wait(getChan func() chan struct{}) error {
 	}
 	return nil
 }
+
+func mapChan[T any, V any](chT <-chan T, mapFunc func(T) V, capacity int) <-chan V {
+	chV := make(chan V, capacity)
+	go func() {
+		defer close(chV)
+
+		for t := range chT {
+			chV <- mapFunc(t)
+		}
+	}()
+	return chV
+}

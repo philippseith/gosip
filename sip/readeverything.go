@@ -87,3 +87,11 @@ func (r *ReadEverythingResponse) Write(writer io.Writer) error {
 func (r *ReadEverythingResponse) MessageType() MessageType {
 	return ReadEverythingResponseMsgType
 }
+
+func newReadEverythingPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadEverythingRequest, *ReadEverythingResponse) {
+	return &ReadEverythingRequest{
+		SlaveIndex:     uint16(slaveIndex),
+		SlaveExtension: uint16(slaveExtension),
+		IDN:            idn,
+	}, &ReadEverythingResponse{}
+}
