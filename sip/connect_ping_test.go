@@ -2,13 +2,14 @@ package sip_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
 )
 
-var address = "127.0.0.5:35021"
+var address = "192.168.2.136:35021"
 
 func TestConnect(t *testing.T) {
 	conn, err := sip.Dial("tcp", address)
@@ -57,5 +58,5 @@ func TestPingShortClosedConnection(t *testing.T) {
 
 	err = conn.Ping(context.Background())
 
-	assert.Equal(t, sip.ErrorClosed, err)
+	assert.True(t, errors.Is(err, sip.ErrorClosed))
 }
