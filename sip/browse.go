@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -14,7 +15,7 @@ import (
 func SendBrowseRequest(senderIP string) error {
 	ip := net.ParseIP(senderIP)
 	if ip == nil {
-		return fmt.Errorf("%w: invalid sender address %s", Error, senderIP)
+		return errtrace.Wrap(fmt.Errorf("%w: invalid sender address %s", Error, senderIP))
 	}
 	writer := bytes.NewBuffer(make([]byte, 9))
 	req := BrowseRequest{
@@ -25,26 +26,26 @@ func SendBrowseRequest(senderIP string) error {
 	}
 	err := req.Write(writer)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	conn, err := net.ListenPacket("udp4", ":35021")
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	broadcastAddr, err := net.ResolveUDPAddr("udp4", "255.255.255.255:35021")
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	_, err = conn.WriteTo(writer.Bytes(), broadcastAddr)
-	return err
+	return errtrace.Wrap(err)
 }
 
 func ListenOnBrowseResponses(ctx context.Context) (<-chan Result[BrowseResponse], error) {
 	conn, err := net.ListenPacket("udp4", ":35021")
 	if err != nil {
-		return nil, err
+		return nil, errtrace.Wrap(err)
 	}
 	ch := make(chan Result[BrowseResponse], 1024)
 	go func() {
@@ -60,7 +61,7 @@ func ListenOnBrowseResponses(ctx context.Context) (<-chan Result[BrowseResponse]
 			default:
 				err := conn.SetReadDeadline(time.Now().Add(time.Second))
 				if err != nil {
-					ch <- Err[BrowseResponse](err)
+					ch <- Err[BrowseResponse](errtrace.Wrap(err))
 					// If setting the deadline does not work,
 					// the go func might not end. We break here.
 					return
@@ -72,7 +73,7 @@ func ListenOnBrowseResponses(ctx context.Context) (<-chan Result[BrowseResponse]
 					if errors.Is(err, context.DeadlineExceeded) {
 						continue
 					}
-					ch <- Err[BrowseResponse](err)
+					ch <- Err[BrowseResponse](errtrace.Wrap(err))
 					// If ReadFrom errored with something different we need to stop
 					return
 				}
@@ -95,11 +96,11 @@ type BrowseRequest struct {
 }
 
 func (b *BrowseRequest) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, b)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, b))
 }
 
 func (b *BrowseRequest) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, *b)
+	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *b))
 }
 
 func (b *BrowseRequest) MessageType() MessageType {
@@ -133,38 +134,38 @@ type browseResponse struct {
 func (b *BrowseResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &b.browseResponse)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	b.DisplayName = make([]byte, b.DisplayNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.DisplayName)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	err = binary.Read(reader, binary.LittleEndian, &b.HostNameLength)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	b.HostName = make([]byte, b.HostNameLength)
-	return binary.Read(reader, binary.LittleEndian, b.HostName)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, b.HostName))
 }
 
 func (b *BrowseResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, b.browseResponse)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	if b.DisplayNameLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, b.DisplayName)
 		if err != nil {
-			return err
+			return errtrace.Wrap(err)
 		}
 	}
 	err = binary.Write(writer, binary.LittleEndian, b.HostNameLength)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	if b.HostNameLength > 0 {
-		return binary.Write(writer, binary.LittleEndian, b.HostName)
+		return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, b.HostName))
 	}
 	return nil
 }

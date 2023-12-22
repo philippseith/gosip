@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
 )
@@ -18,11 +19,11 @@ func (r *ReadDataStateRequest) Init(slaveIndex, slaveExtension int, idn uint32) 
 }
 
 func (r *ReadDataStateRequest) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, r)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
 }
 
 func (r *ReadDataStateRequest) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, *r)
+	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
 }
 
 func (r *ReadDataStateRequest) MessageType() MessageType {
@@ -34,11 +35,11 @@ type ReadDataStateResponse struct {
 }
 
 func (r *ReadDataStateResponse) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, r)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
 }
 
 func (r *ReadDataStateResponse) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, *r)
+	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
 }
 
 func (r *ReadDataStateResponse) MessageType() MessageType {

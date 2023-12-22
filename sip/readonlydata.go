@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
 )
@@ -18,11 +19,11 @@ func (r *ReadOnlyDataRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
 }
 
 func (r *ReadOnlyDataRequest) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, r)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
 }
 
 func (r *ReadOnlyDataRequest) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, *r)
+	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
 }
 
 func (r *ReadOnlyDataRequest) MessageType() MessageType {
@@ -42,19 +43,19 @@ type readOnlyDataResponse struct {
 func (r *ReadOnlyDataResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &r.readOnlyDataResponse)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	r.Data = make([]byte, r.DataLength)
-	return binary.Read(reader, binary.LittleEndian, r.Data)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r.Data))
 }
 
 func (r *ReadOnlyDataResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, r.readOnlyDataResponse)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	if r.DataLength > 0 {
-		return binary.Write(writer, binary.LittleEndian, r.Data)
+		return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, r.Data))
 	}
 	return nil
 }

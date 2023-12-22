@@ -3,6 +3,7 @@ package sip
 import (
 	"fmt"
 
+	"braces.dev/errtrace"
 	"github.com/cenkalti/backoff/v4"
 )
 
@@ -19,7 +20,7 @@ func WithBusyTimeout(timeout int) func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
 		}
-		return fmt.Errorf("%w: Timeout must be greater 0", Error)
+		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 
@@ -28,7 +29,7 @@ func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
 		}
-		return fmt.Errorf("%w: Timeout must be greater 0", Error)
+		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 

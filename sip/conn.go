@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"context"
 	"net"
 	"time"
@@ -62,7 +63,7 @@ type ConnProperties interface {
 func Dial(network, address string, options ...func(c *connOptions) error) (Conn, error) {
 	netConn, err := net.Dial(network, address)
 	if err != nil {
-		return nil, err
+		return nil, errtrace.Wrap(err)
 	}
 	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
 
@@ -83,7 +84,7 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {
-			return nil, err
+			return nil, errtrace.Wrap(err)
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
@@ -93,17 +94,17 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
-		c.cancelAllRequests(context.Cause(sendRecvCtx))
+		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
 	}()
 
-	return c, c.connect()
+	return c, errtrace.Wrap(c.connect())
 }
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
-	return c.cleanUp()
+	return errtrace.Wrap(c.cleanUp())
 }
 
 func (c *conn) Connected() bool {
@@ -142,35 +143,35 @@ func (c *conn) MessageTypes() []uint32 {
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
+	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{}))
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
-	return *resp, err
+	return *resp, errtrace.Wrap(err)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
-	return *resp, err
+	return *resp, errtrace.Wrap(err)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
-	return *resp, err
+	return *resp, errtrace.Wrap(err)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
-	return *resp, err
+	return *resp, errtrace.Wrap(err)
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	return sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
+	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			SlaveIndex:     uint16(slaveIndex),
 			SlaveExtension: uint16(slaveExtension),
@@ -178,5 +179,5 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 			DataLength:     uint32(len(data)),
 		},
 		Data: data,
-	}, &WriteDataResponse{})
+	}, &WriteDataResponse{}))
 }

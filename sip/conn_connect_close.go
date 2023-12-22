@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"context"
 	"log"
 	"time"
@@ -16,7 +17,7 @@ func (c *conn) connect() error {
 	})
 	respPdu := &ConnectResponse{}
 	if err := respFunc(respPdu); err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	func() {
 		c.mxCR.Lock()
@@ -63,7 +64,7 @@ func (c *conn) cancelAllRequests(err error) {
 	defer c.mxRC.Unlock()
 
 	errFunc := func(PDU) error {
-		return err
+		return errtrace.Wrap(err)
 	}
 	for _, ch := range c.respChans {
 		cch := ch
@@ -93,5 +94,5 @@ func (c *conn) cleanUp() (err error) {
 		err = c.Conn.Close()
 		c.Conn = nil
 	}
-	return err
+	return errtrace.Wrap(err)
 }

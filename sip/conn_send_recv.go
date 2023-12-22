@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"bufio"
 	"context"
 	"fmt"
@@ -21,22 +22,22 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 		for {
 			select {
 			case <-ctx.Done():
-				return context.Cause(ctx)
+				return errtrace.Wrap(context.Cause(ctx))
 			// Get a new request
 			case req, ok := <-c.dequeueRequest():
 				if !ok {
-					return ErrorClosed
+					return errtrace.Wrap(ErrorClosed)
 				}
 				if err := wait(c.transactionAllowed); err != nil {
-					return err
+					return errtrace.Wrap(err)
 				}
 				if err := c.send(req); err != nil {
-					cancel(err)
-					return err
+					cancel(errtrace.Wrap(err))
+					return errtrace.Wrap(err)
 				}
 				// Inform receiveLoop there's a new transaction initiated
 				if err := signal(c.transactionStarted); err != nil {
-					return err
+					return errtrace.Wrap(err)
 				}
 			}
 		}
@@ -55,19 +56,19 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 		for {
 			select {
 			case <-ctx.Done():
-				return context.Cause(ctx)
+				return errtrace.Wrap(context.Cause(ctx))
 			default:
 				// Wait for an initiated transaction
 				if err := wait(c.transactionStarted); err != nil {
-					return err
+					return errtrace.Wrap(err)
 				}
 				if err := c.receiveAndDispatch(); err != nil {
-					cancel(err)
-					return err
+					cancel(errtrace.Wrap(err))
+					return errtrace.Wrap(err)
 				}
 				// decrease the number of currently running req/resp pairs
 				if err := signal(c.transactionAllowed); err != nil {
-					return err
+					return errtrace.Wrap(err)
 				}
 			}
 		}
@@ -99,7 +100,7 @@ func (c *conn) enqueueRequest(req request) error {
 	}()
 	// Is the connection closed?
 	if ch == nil {
-		return ErrorClosed
+		return errtrace.Wrap(ErrorClosed)
 	}
 	// Send request job into the queue of the sendLoop
 	ch <- req
@@ -112,7 +113,7 @@ func (c *conn) send(req request) error {
 	// where also the transactionID is set.
 	transactionID, err := req.write(c.Conn)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	func() {
 		c.mxRC.Lock()
@@ -136,7 +137,7 @@ func (c *conn) receiveAndDispatch() error {
 	h := &Header{}
 	err := h.Read(c.timeoutReader)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 	if h.MessageType == 0 { // TODO When does this happen?
 		return nil
@@ -154,22 +155,22 @@ func (c *conn) receiveAndDispatch() error {
 	case ExceptionMsgType:
 		respFunc, err = c.newExceptionResponse(respFuncExecuted)
 		if err != nil {
-			return err
+			return errtrace.Wrap(err)
 		}
 	default:
 		respFunc = func(pdu PDU) error {
 			defer close(respFuncExecuted)
 
 			if h.MessageType != pdu.MessageType() {
-				return fmt.Errorf(
+				return errtrace.Wrap(fmt.Errorf(
 					"%w. Type %d, Expected: %d, TransactionId: %d",
 					ErrorInvalidResponseMessageType,
-					h.MessageType, pdu.MessageType(), h.TransactionID)
+					h.MessageType, pdu.MessageType(), h.TransactionID))
 			}
 			// log.Printf("receiving %v, id: %v", pdu.MessageType(), h.TransactionID)
 			err = pdu.Read(c.timeoutReader)
 			// log.Printf("received %v, id: %v, err: %v", pdu.MessageType(), h.TransactionID, err)
-			return err
+			return errtrace.Wrap(err)
 		}
 	}
 	// Get the response channel of the request for this transactionID and send the respFunc to it
@@ -182,12 +183,12 @@ func (c *conn) receiveAndDispatch() error {
 func (c *conn) newExceptionResponse(respFuncExecuted chan struct{}) (func(PDU) error, error) {
 	ex := Exception{}
 	if err := ex.Read(c.timeoutReader); err != nil {
-		return nil, err
+		return nil, errtrace.Wrap(err)
 	}
 	return func(PDU) error {
 		defer close(respFuncExecuted)
 
-		return ex
+		return errtrace.Wrap(ex)
 	}, nil
 }
 
@@ -212,7 +213,7 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 		TransactionID: atomic.AddUint32(&c.transactionID, 1),
 		MessageType:   pdu.MessageType(),
 	}
-	return h.TransactionID, h.Write(conn)
+	return h.TransactionID, errtrace.Wrap(h.Write(conn))
 }
 
 func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *conn, req PDU, resp Response) error {
@@ -223,14 +224,14 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 	select {
 	case respFunc := <-c.sendRequest(req):
 		// Fill it by using PDU.Read()
-		return respFunc(resp)
+		return errtrace.Wrap(respFunc(resp))
 	case <-ctx.Done():
 		go func() {
 			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block
 			respFunc := <-c.sendRequest(req)
 			_ = respFunc(resp)
 		}()
-		return ctx.Err()
+		return errtrace.Wrap(ctx.Err())
 	}
 }
 
@@ -246,13 +247,13 @@ func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 			transactionId, err = c.writeHeader(mtuWriter, pdu)
 			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
-				return transactionId, err
+				return transactionId, errtrace.Wrap(err)
 			}
 			err = pdu.Write(mtuWriter)
 			if err == nil {
 				err = mtuWriter.Flush()
 			}
-			return transactionId, err
+			return transactionId, errtrace.Wrap(err)
 		},
 		ch: make(chan func(PDU) error),
 	}
@@ -261,8 +262,8 @@ func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 		// The sendLoop does not run anymore
 		// Build an result chan which errors
 		ch := make(chan func(PDU) error, 1)
-		err := func(PDU) error { return err }
-		ch <- err
+		errFunc := func(PDU) error { return errtrace.Wrap(err) }
+		ch <- errFunc
 		return ch
 	}
 	return req.ch

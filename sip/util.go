@@ -1,10 +1,12 @@
 package sip
 
+import "braces.dev/errtrace"
+
 func signal(getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
-		return ErrorClosed
+		return errtrace.Wrap(ErrorClosed)
 	}
 	ch <- struct{}{}
 	return nil
@@ -14,11 +16,11 @@ func wait(getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
-		return ErrorClosed
+		return errtrace.Wrap(ErrorClosed)
 	}
 	_, ok := <-ch
 	if !ok {
-		return ErrorClosed
+		return errtrace.Wrap(ErrorClosed)
 	}
 	return nil
 }
