@@ -24,7 +24,7 @@ func ListenToBrowseResponses(ctx context.Context, interfaceIP string) (net.Packe
 	if err != nil {
 		return nil, nil, errtrace.Wrap(err)
 	}
-	ch := make(chan Result[BrowseResponse], 1024) // Such many devices should be a pretty uncommon case
+	ch := make(chan Result[BrowseResponse], 512) // Such many devices should be a pretty uncommon case
 	go func() {
 		defer func() {
 			_ = conn.Close()

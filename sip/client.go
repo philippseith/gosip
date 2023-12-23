@@ -19,7 +19,7 @@ import (
 // can be configured with options.
 // The GoXXX variants of the methods work asynchronously by returning a channel.
 //
-// Close closes the currently open connection, if there is any yet.
+// Close closes the currently open connection, if there is anyone yet.
 type Client interface {
 	ConnProperties
 
@@ -126,6 +126,7 @@ func (c *client) BusyTimeout() time.Duration {
 	}
 	return c.Conn.BusyTimeout()
 }
+
 func (c *client) LeaseTimeout() time.Duration {
 	if c.Conn == nil {
 		return time.Millisecond * time.Duration(0)

@@ -1,16 +1,23 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"context"
 	"net"
 	"time"
+
+	"braces.dev/errtrace"
 )
 
 // Conn is a SIP client connection. It can be used to read and write SERCOS
-// parameter values. Its lifetime starts with Dial() and ends when the user
-// calls Close(), the server does not answer in timely manner (BusyTimeout) or
+// parameter values. Its lifetime starts with Dial and ends when the user
+// calls Close, the server does not answer in timely manner (BusyTimeout) or
 // the underlying net.Conn has been closed.
+//
+// When Dial is successful, the S/IP Connect procedure has already been executed.
+// Ping, ReadXXX, WriteData send the according Request and try to receive the matching Response.
+// They return either with an error or when the Response has been received successfuly.
+//
+// Conn is able to execute more than one concurrent transaction, see WithConcurrentTransactionLimit.
 type Conn interface {
 	ConnProperties
 
@@ -59,7 +66,7 @@ type ConnProperties interface {
 	MessageTypes() []uint32
 }
 
-// Dial opens a sip.Conn.
+// Dial opens a Conn and connects it.
 func Dial(network, address string, options ...func(c *connOptions) error) (Conn, error) {
 	netConn, err := net.Dial(network, address)
 	if err != nil {
@@ -80,7 +87,7 @@ func Dial(network, address string, options ...func(c *connOptions) error) (Conn,
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
-	_ = WithConcurrentTransactions(5000)(&c.connOptions)
+	_ = WithConcurrentTransactionLimit(5000)(&c.connOptions)
 	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {

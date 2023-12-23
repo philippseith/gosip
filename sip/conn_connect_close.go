@@ -1,10 +1,11 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"context"
 	"log"
 	"time"
+
+	"braces.dev/errtrace"
 )
 
 func (c *conn) connect() error {

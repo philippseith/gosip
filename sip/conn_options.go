@@ -15,6 +15,7 @@ type connOptions struct {
 	backoffFactory               func() backoff.BackOff
 }
 
+// WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
 func WithBusyTimeout(timeout int) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		if timeout > 0 {
@@ -24,6 +25,7 @@ func WithBusyTimeout(timeout int) func(c *connOptions) error {
 	}
 }
 
+// WithLeaseTimeout sets the LeaseTimeout to negotiate with the server in ms. Default is 10000ms.
 func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		if timeout > 0 {
@@ -33,9 +35,9 @@ func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 	}
 }
 
-// WithConcurrentTransactions limits the number of concurrent requests sent.
+// WithConcurrentTransactionLimit limits the number of concurrent requests sent.
 // If the option is not given in Dial, the concurrency is not limited.
-func WithConcurrentTransactions(ct uint) func(c *connOptions) error {
+func WithConcurrentTransactionLimit(ct uint) func(c *connOptions) error {
 	return func(c *connOptions) error {
 		c.concurrentTransactionLimitCh = make(chan struct{}, ct)
 		for i := uint(0); i < ct; i++ {

@@ -104,7 +104,7 @@ func BenchmarkReadParallel(t *testing.B) {
 }
 
 func TestReadS192(t *testing.T) {
-	conn, err := sip.Dial("tcp", address, sip.WithConcurrentTransactions(1))
+	conn, err := sip.Dial("tcp", address, sip.WithConcurrentTransactionLimit(1))
 
 	assert.NoError(t, err)
 	if err != nil {
