@@ -69,7 +69,7 @@ func SendBrowseRequest(conn net.PacketConn) error {
 		IPAddress:          [4]byte(udpAddr.IP.To4()),
 		MasterOnly:         false,
 		LowerSercosAddress: 0,
-		UpperSercosAddress: 1024,
+		UpperSercosAddress: 511,
 	}
 	err = req.Write(writer)
 	if err != nil {
