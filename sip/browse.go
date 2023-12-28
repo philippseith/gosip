@@ -86,8 +86,8 @@ func SendBrowseRequest(conn net.PacketConn) error {
 }
 
 // Browse calls ListenToBrowseResponses and sends one BrowseRequest.
-func Browse(ctx context.Context, interfaceIP string) (<-chan Result[BrowseResponse], error) {
-	conn, ch, err := ListenToBrowseResponses(ctx, interfaceIP)
+func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResponse], error) {
+	conn, ch, err := ListenToBrowseResponses(ctx, interfaceName)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}
@@ -97,10 +97,10 @@ func Browse(ctx context.Context, interfaceIP string) (<-chan Result[BrowseRespon
 	return ch, nil
 }
 
-func newConn(interfaceIP string) (net.PacketConn, net.IP, error) {
-	ip := net.ParseIP(interfaceIP)
-	if ip == nil {
-		return nil, nil, errtrace.Wrap(fmt.Errorf("%w: invalid sender address %s", Error, interfaceIP))
+func newConn(interfaceName string) (net.PacketConn, net.IP, error) {
+	ip, err := findIPV4OfInterface(interfaceName)
+	if err != nil {
+		return nil, nil, errtrace.Wrap(err)
 	}
 	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
 	if err != nil {
@@ -111,6 +111,32 @@ func newConn(interfaceIP string) (net.PacketConn, net.IP, error) {
 		return nil, nil, errtrace.Wrap(err)
 	}
 	return conn, ip, nil
+}
+
+func findIPV4OfInterface(interfaceName string) (net.IP, error) {
+	ifcs, err := net.Interfaces()
+	if err != nil {
+		return nil, errtrace.Wrap(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
+	}
+	for _, ifc := range ifcs {
+		if ifc.Name != interfaceName {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			return nil, errtrace.Wrap(fmt.Errorf("%w: Can not read addresses of interface %s: %w", Error, interfaceName, err))
+		}
+		for _, addr := range addrs {
+			ipAddr, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if ipAddr.IP.To4() != nil {
+				return ipAddr.IP, nil
+			}
+		}
+	}
+	return nil, errtrace.Wrap(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
 }
 
 func listenToBrowseResponse(conn net.PacketConn, ch chan<- Result[BrowseResponse]) bool {

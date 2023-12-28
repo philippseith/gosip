@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var interfaceIP = "192.168.2.81"
+var interfaceName = "en0"
 
 func TestBrowse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	ch, err := sip.Browse(ctx, interfaceIP)
+	ch, err := sip.Browse(ctx, interfaceName)
 	assert.NoError(t, err)
 
 	var resps []sip.BrowseResponse
