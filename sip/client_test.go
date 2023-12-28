@@ -10,7 +10,7 @@ import (
 )
 
 func TestClientReconnectLeaseExceeded(t *testing.T) {
-	c := sip.NewClient("tcp", address)
+	c := sip.NewClient("tcp", serverAddress)
 	assert.NoError(t, c.Ping())
 	assert.NoError(t, c.Ping())
 	log.Printf("Waiting %v", c.LeaseTimeout())

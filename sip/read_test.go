@@ -13,7 +13,7 @@ import (
 )
 
 func TestReadEverything(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -28,7 +28,7 @@ func TestReadEverything(t *testing.T) {
 }
 
 func TestReadOnlyData(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestReadOnlyData(t *testing.T) {
 }
 
 func TestReadDescription(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestReadDescription(t *testing.T) {
 }
 
 func TestReadDataState(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
@@ -74,7 +74,7 @@ func TestReadDataState(t *testing.T) {
 func BenchmarkReadParallel(t *testing.B) {
 	log.SetFlags(log.Lmicroseconds)
 
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
@@ -104,7 +104,7 @@ func BenchmarkReadParallel(t *testing.B) {
 }
 
 func TestReadS192(t *testing.T) {
-	conn, err := sip.Dial("tcp", address, sip.WithConcurrentTransactionLimit(1))
+	conn, err := sip.Dial("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 
 	assert.NoError(t, err)
 	if err != nil {

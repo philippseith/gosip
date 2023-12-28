@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var interfaceName = "en0"
-
 func TestBrowse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

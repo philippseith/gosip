@@ -22,3 +22,4 @@ go.work
 
 #idea
 .idea
+sip/testdata/test_config.json
