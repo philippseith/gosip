@@ -3,7 +3,7 @@ module github.com/philippseith/gosip
 go 1.21.0
 
 require (
-	braces.dev/errtrace v0.2.0
+	braces.dev/errtrace v0.3.0
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
