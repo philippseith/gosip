@@ -14,13 +14,13 @@ import (
 	"braces.dev/errtrace"
 )
 
-// ListenToBrowseResponses listens on interfaceIP for BrowseResponses until ctx is canceled.
+// ListenToBrowseResponses listens on interfaceName for BrowseResponses until ctx is canceled.
 // It automatically reserves a free port for listening.
 // The returned net.PacketConn should be used to send BrowseRequests on the listened port.
 // The channel returns any valid BrowseResponse that is received, all errors occured while parsing received packages
 // and all errors with the net.PacketConn. The connection and the channel are closed in case of errors of the latter category.
-func ListenToBrowseResponses(ctx context.Context, interfaceIP string) (net.PacketConn, <-chan Result[BrowseResponse], error) {
-	conn, _, err := newConn(interfaceIP)
+func ListenToBrowseResponses(ctx context.Context, interfaceName string) (net.PacketConn, <-chan Result[BrowseResponse], error) {
+	conn, _, err := newConn(interfaceName)
 	if err != nil {
 		return nil, nil, errtrace.Wrap(err)
 	}
