@@ -7,6 +7,7 @@ import (
 	"log"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
@@ -112,7 +113,9 @@ func TestReadS192(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 192)
+	defer measureTime("")()
+
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, resp.DataLength)
@@ -126,13 +129,20 @@ func TestReadS192(t *testing.T) {
 	for _, i := range idns {
 		idn := i
 		go func() {
-			_, err := conn.ReadEverything(context.Background(), 0, 0, idn)
+			_, err := conn.ReadOnlyData(context.Background(), 0, 0, idn)
 			assert.NoError(t, err)
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 	log.Print("stop")
+}
+
+func measureTime(id string) func() {
+	now := time.Now()
+	return func() {
+		log.Print(id, " ", time.Now().Sub(now).Milliseconds())
+	}
 }
 
 func TestChanStruct(t *testing.T) {
