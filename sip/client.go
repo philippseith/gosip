@@ -307,8 +307,11 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	// Either the context timed out or the go func returned
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return ErrorTimeout
 	case result := <-ch:
+		if errors.Is(result.Err, context.DeadlineExceeded) {
+			return ErrorTimeout
+		}
 		if result.Err != nil {
 			return result.Err
 		}
