@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"braces.dev/errtrace"
@@ -121,6 +122,7 @@ type client struct {
 	options        []ConnOption
 	backoffFactory func() backoff.BackOff
 	backoff        backoff.BackOff
+	mxBackoff      sync.Mutex
 }
 
 func (c *client) BusyTimeout() time.Duration {
@@ -290,27 +292,68 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		time.Since(c.Conn.LastReceived()) < c.Conn.LeaseTimeout() {
 		return nil
 	}
-	if c.backoff == nil {
-		c.backoff = c.backoffFactory()
+	func() {
+		c.mxBackoff.Lock()
+		defer c.mxBackoff.Unlock()
+
+		if c.backoff == nil {
+			c.backoff = c.backoffFactory()
+		}
+	}()
+
+	ch := make(chan Result[Conn])
+	go c.dialWithBackoff(ctx, ch)
+
+	// Either the context timed out or the go func returned
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return result.Err
+		}
+		c.Conn = result.Ok
+		return nil
 	}
+}
+
+func (c *client) dialWithBackoff(ctx context.Context, ch chan Result[Conn]) {
+	defer close(ch)
+
 	var spanSum time.Duration
 	// Try to connect until the
 	for {
 		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
 		// nolint:contextcheck
-		c.Conn, err = Dial(c.network, c.address, c.options...)
+		conn, err := Dial(c.network, c.address, c.options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
 			// When connecting worked, the backoff has to start anew with the next request
-			c.backoff = nil
-			return nil
+			func() {
+				c.mxBackoff.Lock()
+				defer c.mxBackoff.Unlock()
+
+				c.backoff = nil
+			}()
+
+			ch <- Ok[Conn](conn)
+			return
 		}
-		backoffSpan := c.backoff.NextBackOff()
+
+		backoffSpan := func() time.Duration {
+			c.mxBackoff.Lock()
+			defer c.mxBackoff.Unlock()
+
+			return c.backoff.NextBackOff()
+		}()
+
 		if backoffSpan == backoff.Stop {
-			return errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err))
+			ch <- Err[Conn](errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)))
+			return
 		}
 		select {
 		case <-ctx.Done():
-			return errtrace.Wrap(ctx.Err())
+			ch <- Err[Conn](errtrace.Wrap(ctx.Err()))
+			return
 		case <-time.After(backoffSpan):
 			spanSum += backoffSpan
 		}
