@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"log"
 	"sync"
 	"testing"
 	"time"
 
+	"braces.dev/errtrace"
 	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
 )
@@ -104,6 +106,10 @@ func BenchmarkReadParallel(t *testing.B) {
 	assert.Equal(t, b1, b2)
 }
 
+func init() {
+	_ = errtrace.FormatString(errors.ErrUnsupported)
+}
+
 func TestReadS192(t *testing.T) {
 	conn, err := sip.Dial("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 
@@ -115,7 +121,7 @@ func TestReadS192(t *testing.T) {
 
 	defer measureTime("")()
 
-	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 17)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1789)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, resp.DataLength)

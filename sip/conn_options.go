@@ -7,6 +7,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
+// ConnOption is option for Conn
+type ConnOption func(c *connOptions) error
+
 type connOptions struct {
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
@@ -16,7 +19,7 @@ type connOptions struct {
 }
 
 // WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
-func WithBusyTimeout(timeout int) func(c *connOptions) error {
+func WithBusyTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
@@ -26,7 +29,7 @@ func WithBusyTimeout(timeout int) func(c *connOptions) error {
 }
 
 // WithLeaseTimeout sets the LeaseTimeout to negotiate with the server in ms. Default is 10000ms.
-func WithLeaseTimeout(timeout int) func(c *connOptions) error {
+func WithLeaseTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
@@ -37,7 +40,7 @@ func WithLeaseTimeout(timeout int) func(c *connOptions) error {
 
 // WithConcurrentTransactionLimit limits the number of concurrent requests sent.
 // If the option is not given in Dial, the concurrency is not limited.
-func WithConcurrentTransactionLimit(ct uint) func(c *connOptions) error {
+func WithConcurrentTransactionLimit(ct uint) ConnOption {
 	return func(c *connOptions) error {
 		c.concurrentTransactionLimitCh = make(chan struct{}, ct)
 		for i := uint(0); i < ct; i++ {
@@ -61,7 +64,7 @@ func WithSendKeepAlive() func(c *connOptions) error {
 // to different latency results, depending on the server implementation.
 // Note that ICMP ping requires specific system config options mentioned here:
 // https://github.com/prometheus-community/#supported-operating-systems
-func WithMeasureNetworkLatencyICMP() func(c *connOptions) error {
+func WithMeasureNetworkLatencyICMP() ConnOption {
 	// TODO
 	return func(c *connOptions) error { return nil }
 }

@@ -67,7 +67,7 @@ type ConnProperties interface {
 }
 
 // Dial opens a Conn and connects it.
-func Dial(network, address string, options ...func(c *connOptions) error) (Conn, error) {
+func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	netConn, err := net.Dial(network, address)
 	if err != nil {
 		return nil, errtrace.Wrap(err)

@@ -23,21 +23,21 @@ import (
 type Client interface {
 	ConnProperties
 
-	Ping(options ...func(*requestOptions) error) error
-	GoPing(options ...func(*requestOptions) error) <-chan error
+	Ping(options ...RequestOption) error
+	GoPing(options ...RequestOption) <-chan error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error)
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
 
-	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadEverythingResponse]
-	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadOnlyDataResponse]
-	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadDescriptionResponse]
-	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadDataStateResponse]
+	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse]
+	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse]
+	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse]
+	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse]
 
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error
-	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) <-chan error
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
+	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
 
 	Close() error
 }
@@ -47,7 +47,7 @@ type Client interface {
 // backoff strategy is an exponential backoff, starting with a backoff time of
 // 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
 // seconds. All other options are ignored.
-func NewClient(network, address string, options ...func(c *connOptions) error) Client {
+func NewClient(network, address string, options ...ConnOption) Client {
 	co := &connOptions{
 		backoffFactory: func() backoff.BackOff {
 			b := backoff.NewExponentialBackOff()
@@ -71,15 +71,18 @@ func NewClient(network, address string, options ...func(c *connOptions) error) C
 // backoff strategies. Default is an exponential backoff, starting with a
 // backoff time of 500ms, exponentially incremented by factor 1.5, with an
 // overall timeout of 10 seconds.
-func WithDialBackoff(backoffFactory func() backoff.BackOff) func(c *connOptions) error {
+func WithDialBackoff(backoffFactory func() backoff.BackOff) ConnOption {
 	return func(c *connOptions) error {
 		c.backoffFactory = backoffFactory
 		return nil
 	}
 }
 
+// RequestOption is a option for any kind of request
+type RequestOption func(r *requestOptions) error
+
 // WithRetries configures how often a request is retried when it fails. Default is no retry.
-func WithRetries(retries uint) func(r *requestOptions) error {
+func WithRetries(retries uint) RequestOption {
 	return func(r *requestOptions) error {
 		r.retries = retries
 		return nil
@@ -87,7 +90,7 @@ func WithRetries(retries uint) func(r *requestOptions) error {
 }
 
 // WithContext allows to cancel a request with a context.
-func WithContext(ctx context.Context) func(r *requestOptions) error {
+func WithContext(ctx context.Context) RequestOption {
 	return func(r *requestOptions) error {
 		r.ctx = ctx
 		return nil
@@ -99,7 +102,7 @@ type requestOptions struct {
 	ctx     context.Context
 }
 
-func parseRequestOptions(options ...func(*requestOptions) error) (*requestOptions, error) {
+func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
 	r := &requestOptions{
 		ctx: context.Background(),
 	}
@@ -115,7 +118,7 @@ type client struct {
 	Conn
 	network        string
 	address        string
-	options        []func(c *connOptions) error
+	options        []ConnOption
 	backoffFactory func() backoff.BackOff
 	backoff        backoff.BackOff
 }
@@ -148,76 +151,76 @@ func (c *client) MessageTypes() []uint32 {
 	return c.Conn.MessageTypes()
 }
 
-func (c *client) Ping(options ...func(*requestOptions) error) error {
+func (c *client) Ping(options ...RequestOption) error {
 	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, errtrace.Wrap(c.Conn.Ping(ctx))
 	}, options...)
 	return errtrace.Wrap(err)
 }
 
-func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadEverythingResponse, error) {
+func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadEverything(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
-func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadOnlyDataResponse, error) {
+func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
-func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDescriptionResponse, error) {
+func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadDescription(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
-func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) (ReadDataStateResponse, error) {
+func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadDataState(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
-func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) error {
+func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error {
 	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, errtrace.Wrap(c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data))
 	}, options...)
 	return errtrace.Wrap(err)
 }
 
-func (c *client) GoPing(options ...func(*requestOptions) error) <-chan error {
+func (c *client) GoPing(options ...RequestOption) <-chan error {
 	return goParseTryConnectDoWithErrChan(c, func(ctx context.Context) error {
 		// Do not inline. c.Conn is not set yet
 		return errtrace.Wrap(c.Conn.Ping(ctx))
 	}, options...)
 }
 
-func (c *client) GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadEverythingResponse] {
+func (c *client) GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse] {
 	return goParseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadEverything(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
-func (c *client) GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadOnlyDataResponse] {
+func (c *client) GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse] {
 	return goParseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
-func (c *client) GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadDescriptionResponse] {
+func (c *client) GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse] {
 	return goParseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadDescription(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
-func (c *client) GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...func(*requestOptions) error) <-chan Result[ReadDataStateResponse] {
+func (c *client) GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse] {
 	return goParseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
 		return errtrace.Wrap2(c.Conn.ReadDataState(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
-func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...func(*requestOptions) error) <-chan error {
+func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error {
 	return goParseTryConnectDoWithErrChan(c,
 		func(ctx context.Context) error {
 			return errtrace.Wrap(c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data))
@@ -231,7 +234,7 @@ func (c *client) Close() error {
 	return errtrace.Wrap(ErrorClosed)
 }
 
-func goParseTryConnectDoWithErrChan(c *client, do func(context.Context) error, options ...func(*requestOptions) error) <-chan error {
+func goParseTryConnectDoWithErrChan(c *client, do func(context.Context) error, options ...RequestOption) <-chan error {
 	return mapChan[Result[struct{}], error](
 		goParseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
 			return struct{}{}, errtrace.Wrap(do(ctx))
@@ -243,7 +246,7 @@ func goParseTryConnectDoWithErrChan(c *client, do func(context.Context) error, o
 
 func goParseTryConnectDo[T any](c *client,
 	do func(context.Context) (T, error),
-	options ...func(*requestOptions) error) <-chan Result[T] {
+	options ...RequestOption) <-chan Result[T] {
 	ch := make(chan Result[T], 1)
 	go func() {
 		defer close(ch)
@@ -257,7 +260,7 @@ func goParseTryConnectDo[T any](c *client,
 
 func parseTryConnectDo[T any](c *client,
 	do func(context.Context) (T, error),
-	options ...func(*requestOptions) error) (T, error) {
+	options ...RequestOption) (T, error) {
 
 	requestSettings, err := parseRequestOptions(options...)
 	if err != nil {
