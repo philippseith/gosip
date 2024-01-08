@@ -135,42 +135,43 @@ func (c *client) Conn() Conn {
 }
 
 func (c *client) Connected() bool {
-	if conn := c.Conn(); conn != nil {
+	conn := c.Conn()
+	if conn != nil {
 		return conn.Connected()
 	}
 	return false
 }
 
 func (c *client) BusyTimeout() time.Duration {
-	if conn := c.Conn(); conn == nil {
+	conn := c.Conn()
+	if conn == nil {
 		return time.Millisecond * time.Duration(0)
-	} else {
-		return conn.BusyTimeout()
 	}
+	return conn.BusyTimeout()
 }
 
 func (c *client) LeaseTimeout() time.Duration {
-	if conn := c.Conn(); conn == nil {
+	conn := c.Conn()
+	if conn == nil {
 		return time.Millisecond * time.Duration(0)
-	} else {
-		return conn.LeaseTimeout()
 	}
+	return conn.LeaseTimeout()
 }
 
 func (c *client) LastReceived() time.Time {
-	if conn := c.Conn(); conn == nil {
+	conn := c.Conn()
+	if conn == nil {
 		return time.Time{}
-	} else {
-		return conn.LastReceived()
 	}
+	return conn.LastReceived()
 }
 
 func (c *client) MessageTypes() []uint32 {
-	if conn := c.Conn(); conn == nil {
+	conn := c.Conn()
+	if conn == nil {
 		return nil
-	} else {
-		return conn.MessageTypes()
 	}
+	return conn.MessageTypes()
 }
 
 func (c *client) Ping(options ...RequestOption) error {
