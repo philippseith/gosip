@@ -116,7 +116,10 @@ func (c *conn) Close() error {
 
 func (c *conn) Connected() bool {
 	c.mxCR.RLock()
+	c.mxState.RLock()
+
 	defer c.mxCR.RUnlock()
+	defer c.mxState.RUnlock()
 
 	return c.Conn != nil && c.connectResponse.Version != 0
 }

@@ -116,7 +116,9 @@ func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
 }
 
 type client struct {
-	Conn
+	conn   Conn
+	mxConn sync.RWMutex
+
 	network        string
 	address        string
 	options        []ConnOption
@@ -125,113 +127,131 @@ type client struct {
 	mxBackoff      sync.Mutex
 }
 
-func (c *client) BusyTimeout() time.Duration {
-	if c.Conn == nil {
-		return time.Millisecond * time.Duration(0)
+func (c *client) Conn() Conn {
+	c.mxConn.RLock()
+	defer c.mxConn.RUnlock()
+
+	return c.conn
+}
+
+func (c *client) Connected() bool {
+	if conn := c.Conn(); conn != nil {
+		return conn.Connected()
 	}
-	return c.Conn.BusyTimeout()
+	return false
+}
+
+func (c *client) BusyTimeout() time.Duration {
+	if conn := c.Conn(); conn == nil {
+		return time.Millisecond * time.Duration(0)
+	} else {
+		return conn.BusyTimeout()
+	}
 }
 
 func (c *client) LeaseTimeout() time.Duration {
-	if c.Conn == nil {
+	if conn := c.Conn(); conn == nil {
 		return time.Millisecond * time.Duration(0)
+	} else {
+		return conn.LeaseTimeout()
 	}
-	return c.Conn.LeaseTimeout()
 }
 
 func (c *client) LastReceived() time.Time {
-	if c.Conn == nil {
+	if conn := c.Conn(); conn == nil {
 		return time.Time{}
+	} else {
+		return conn.LastReceived()
 	}
-	return c.Conn.LastReceived()
 }
 
 func (c *client) MessageTypes() []uint32 {
-	if c.Conn == nil {
+	if conn := c.Conn(); conn == nil {
 		return nil
+	} else {
+		return conn.MessageTypes()
 	}
-	return c.Conn.MessageTypes()
 }
 
 func (c *client) Ping(options ...RequestOption) error {
 	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, errtrace.Wrap(c.Conn.Ping(ctx))
+		return struct{}{}, errtrace.Wrap(c.Conn().Ping(ctx))
 	}, options...)
 	return errtrace.Wrap(err)
 }
 
 func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadEverything(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadEverything(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
 func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
 func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadDescription(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadDescription(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
 func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error) {
 	return errtrace.Wrap2(parseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadDataState(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadDataState(ctx, slaveIndex, slaveExtension, idn))
 	}, options...))
 }
 
 func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error {
 	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, errtrace.Wrap(c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data))
+		return struct{}{}, errtrace.Wrap(c.Conn().WriteData(ctx, slaveIndex, slaveExtension, idn, data))
 	}, options...)
 	return errtrace.Wrap(err)
 }
 
 func (c *client) GoPing(options ...RequestOption) <-chan error {
 	return goParseTryConnectDoWithErrChan(c, func(ctx context.Context) error {
-		// Do not inline. c.Conn is not set yet
-		return errtrace.Wrap(c.Conn.Ping(ctx))
+		// Do not inline. c.Conn() is not set yet
+		return errtrace.Wrap(c.Conn().Ping(ctx))
 	}, options...)
 }
 
 func (c *client) GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse] {
 	return goParseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadEverything(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadEverything(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
 func (c *client) GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse] {
 	return goParseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadOnlyData(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
 func (c *client) GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse] {
 	return goParseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadDescription(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadDescription(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
 func (c *client) GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse] {
 	return goParseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
-		return errtrace.Wrap2(c.Conn.ReadDataState(ctx, slaveIndex, slaveExtension, idn))
+		return errtrace.Wrap2(c.Conn().ReadDataState(ctx, slaveIndex, slaveExtension, idn))
 	}, options...)
 }
 
 func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error {
 	return goParseTryConnectDoWithErrChan(c,
 		func(ctx context.Context) error {
-			return errtrace.Wrap(c.Conn.WriteData(ctx, slaveIndex, slaveExtension, idn, data))
+			return errtrace.Wrap(c.Conn().WriteData(ctx, slaveIndex, slaveExtension, idn, data))
 		}, options...)
 }
 
 func (c *client) Close() error {
-	if c.Conn != nil {
-		return errtrace.Wrap(c.Conn.Close())
+	if conn := c.Conn(); conn != nil {
+		return errtrace.Wrap(conn.Close())
 	}
 	return errtrace.Wrap(ErrorClosed)
 }
@@ -287,9 +307,9 @@ func parseTryConnectDo[T any](c *client,
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
-	if c.Conn != nil &&
-		c.Conn.Connected() &&
-		time.Since(c.Conn.LastReceived()) < c.Conn.LeaseTimeout() {
+	if conn := c.Conn(); conn != nil &&
+		conn.Connected() &&
+		time.Since(conn.LastReceived()) < conn.LeaseTimeout() {
 		return nil
 	}
 	func() {
@@ -315,7 +335,13 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		if result.Err != nil {
 			return result.Err
 		}
-		c.Conn = result.Ok
+
+		func() {
+			c.mxConn.Lock()
+			defer c.mxConn.Unlock()
+			c.conn = result.Ok
+		}()
+
 		return nil
 	}
 }

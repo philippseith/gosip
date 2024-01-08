@@ -1,7 +1,6 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"bufio"
 	"context"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"log"
 	"sync/atomic"
 	"time"
+
+	"braces.dev/errtrace"
 )
 
 // sendLoop is sending the requests it gets from the request queue. Before it
