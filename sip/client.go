@@ -124,7 +124,8 @@ type client struct {
 	options        []ConnOption
 	backoffFactory func() backoff.BackOff
 	backoff        backoff.BackOff
-	mxBackoff      sync.Mutex
+	// Sync the tryConnect process
+	mxTryConnect sync.Mutex
 }
 
 func (c *client) Conn() Conn {
@@ -308,19 +309,22 @@ func parseTryConnectDo[T any](c *client,
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
+	c.mxTryConnect.Lock()
+	defer c.mxTryConnect.Unlock()
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	if conn := c.Conn(); conn != nil &&
 		conn.Connected() &&
 		time.Since(conn.LastReceived()) < conn.LeaseTimeout() {
 		return nil
 	}
-	func() {
-		c.mxBackoff.Lock()
-		defer c.mxBackoff.Unlock()
 
-		if c.backoff == nil {
-			c.backoff = c.backoffFactory()
-		}
-	}()
+	if c.backoff == nil {
+		c.backoff = c.backoffFactory()
+	}
 
 	ch := make(chan Result[Conn])
 	go c.dialWithBackoff(ctx, ch)
@@ -358,23 +362,13 @@ func (c *client) dialWithBackoff(ctx context.Context, ch chan Result[Conn]) {
 		conn, err := Dial(c.network, c.address, c.options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
 			// When connecting worked, the backoff has to start anew with the next request
-			func() {
-				c.mxBackoff.Lock()
-				defer c.mxBackoff.Unlock()
-
-				c.backoff = nil
-			}()
+			c.backoff = nil
 
 			ch <- Ok[Conn](conn)
 			return
 		}
 
-		backoffSpan := func() time.Duration {
-			c.mxBackoff.Lock()
-			defer c.mxBackoff.Unlock()
-
-			return c.backoff.NextBackOff()
-		}()
+		backoffSpan := c.backoff.NextBackOff()
 
 		if backoffSpan == backoff.Stop {
 			ch <- Err[Conn](errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)))
