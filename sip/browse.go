@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"braces.dev/errtrace"
@@ -19,32 +20,44 @@ import (
 // The returned net.PacketConn should be used to send BrowseRequests on the listened port.
 // The channel returns any valid BrowseResponse that is received, all errors occured while parsing received packages
 // and all errors with the net.PacketConn. The connection and the channel are closed in case of errors of the latter category.
-func ListenToBrowseResponses(ctx context.Context, interfaceName string) (net.PacketConn, <-chan Result[BrowseResponse], error) {
-	conn, _, err := newConn(interfaceName)
+func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.PacketConn, <-chan Result[BrowseResponse], error) {
+	conns, err := newConn(interfaceName)
 	if err != nil {
 		return nil, nil, errtrace.Wrap(err)
 	}
-	ch := make(chan Result[BrowseResponse], 512) // Such many devices should be a pretty uncommon case
-	go func() {
-		defer func() {
-			_ = conn.Close()
-			close(ch)
-		}()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// Blocks until a reponse comes in or a 1 sec timeout elapses
-				if !listenToBrowseResponse(conn, ch) {
+	ch := make(chan Result[BrowseResponse], 512) // Such many devices should be a pretty uncommon case
+	var wg sync.WaitGroup
+
+	for _, conn := range conns {
+		wg.Add(1)
+
+		go func(conn net.PacketConn) {
+			defer func() {
+				wg.Done()
+				_ = conn.Close()
+			}()
+
+			for {
+				select {
+				case <-ctx.Done():
 					return
+				default:
+					// Blocks until a reponse comes in or a 1 sec timeout elapses
+					if !listenToBrowseResponse(conn, ch) {
+						return
+					}
 				}
 			}
-		}
+		}(conn)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
 	}()
 
-	return conn, ch, nil
+	return conns, ch, nil
 }
 
 // SendBrowseRequest sends a BrowseRequest on the passed net.PacketConn from ListenToBrowseResponses.
@@ -87,37 +100,51 @@ func SendBrowseRequest(conn net.PacketConn) error {
 
 // Browse calls ListenToBrowseResponses and sends one BrowseRequest.
 func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResponse], error) {
-	conn, ch, err := ListenToBrowseResponses(ctx, interfaceName)
+	conns, ch, err := ListenToBrowseResponses(ctx, interfaceName)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}
-	if err := SendBrowseRequest(conn); err != nil {
+
+	var allErr error
+	for _, conn := range conns {
+		allErr = errors.Join(allErr, SendBrowseRequest(conn))
+	}
+	return ch, errtrace.Wrap(allErr)
+}
+
+func newConn(interfaceName string) ([]net.PacketConn, error) {
+	ips, err := findIPV4OfInterface(interfaceName)
+	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}
-	return ch, nil
+
+	var allErr error
+	conns := make([]net.PacketConn, 0, len(ips))
+	for _, ip := range ips {
+
+		listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
+		if err != nil {
+			allErr = errors.Join(allErr, err)
+			continue
+		}
+
+		conn, err := net.ListenUDP("udp4", listenAddr)
+		if err != nil {
+			allErr = errors.Join(allErr, err)
+			continue
+		}
+
+		conns = append(conns, conn)
+	}
+	return errtrace.Wrap2(conns, allErr)
 }
 
-func newConn(interfaceName string) (net.PacketConn, net.IP, error) {
-	ip, err := findIPV4OfInterface(interfaceName)
-	if err != nil {
-		return nil, nil, errtrace.Wrap(err)
-	}
-	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
-	if err != nil {
-		return nil, nil, errtrace.Wrap(err)
-	}
-	conn, err := net.ListenUDP("udp4", listenAddr)
-	if err != nil {
-		return nil, nil, errtrace.Wrap(err)
-	}
-	return conn, ip, nil
-}
-
-func findIPV4OfInterface(interfaceName string) (net.IP, error) {
+func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 	ifcs, err := net.Interfaces()
 	if err != nil {
 		return nil, errtrace.Wrap(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
 	}
+	var ipV4s []net.IP
 	for _, ifc := range ifcs {
 		if ifc.Name != interfaceName {
 			continue
@@ -132,11 +159,14 @@ func findIPV4OfInterface(interfaceName string) (net.IP, error) {
 				continue
 			}
 			if ipAddr.IP.To4() != nil {
-				return ipAddr.IP, nil
+				ipV4s = append(ipV4s, ipAddr.IP)
 			}
 		}
 	}
-	return nil, errtrace.Wrap(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
+	if len(ipV4s) == 0 {
+		return nil, errtrace.Wrap(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
+	}
+	return ipV4s, nil
 }
 
 func listenToBrowseResponse(conn net.PacketConn, ch chan<- Result[BrowseResponse]) bool {
