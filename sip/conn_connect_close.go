@@ -79,15 +79,12 @@ func (c *conn) cleanUp() (err error) {
 	defer c.mxState.Unlock()
 
 	if c.reqCh != nil {
-		close(c.reqCh)
 		c.reqCh = nil
 	}
 	if c.transactionStartedCh != nil {
-		close(c.transactionStartedCh)
 		c.transactionStartedCh = nil
 	}
 	if c.concurrentTransactionLimitCh != nil {
-		close(c.concurrentTransactionLimitCh)
 		c.concurrentTransactionLimitCh = nil
 	}
 
