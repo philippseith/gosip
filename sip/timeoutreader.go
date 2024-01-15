@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"braces.dev/errtrace"
 	"io"
 	"sync"
 	"time"
@@ -28,9 +29,9 @@ func (t *timeoutReader) Read(p []byte) (n int, err error) {
 	select {
 	case r := <-read:
 		copy(p, r.p)
-		return r.n, r.err
+		return r.n, errtrace.Wrap(r.err)
 	case <-time.After(t.Timeout()):
-		return 0, ErrorTimeout
+		return 0, errtrace.Wrap(ErrorTimeout)
 	}
 }
 

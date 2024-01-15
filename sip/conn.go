@@ -1,127 +1,187 @@
 package sip
 
-import "time"
+import (
+	"context"
+	"net"
+	"time"
 
-func Dial(network, address string, options ...func(c *Conn) error) (c *Conn, err error) {
-	c = &Conn{
-		timeoutReader:            &timeoutReader{},
-		userBusyTimeout:          2000,
-		userLeaseTimeout:         10000,
-		concurrentTransactionsCh: make(chan struct{}, 4000), // Practically infinite queue size, no memory allocation because of struct{} type
+	"braces.dev/errtrace"
+)
+
+// Conn is a SIP client connection. It can be used to read and write SERCOS
+// parameter values. Its lifetime starts with Dial and ends when the user
+// calls Close, the server does not answer in timely manner (BusyTimeout) or
+// the underlying net.Conn has been closed.
+//
+// When Dial is successful, the S/IP Connect procedure has already been executed.
+// Ping, ReadXXX, WriteData send the according Request and try to receive the matching Response.
+// They return either with an error or when the Response has been received successfuly.
+//
+// Conn is able to execute more than one concurrent transaction, see WithConcurrentTransactionLimit.
+type Conn interface {
+	ConnProperties
+
+	Ping(ctx context.Context) error
+
+	ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
+	WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error
+
+	Close() error
+}
+
+// ConnProperties describes the properties of a Conn.
+//
+//	Connected() bool
+//
+// If the Conn is currently connected
+//
+//	BusyTimeout() time.Duration
+//
+// Time span after the server acknowledged to send a Busy response if it is not
+// able to respond to open requests.
+//
+//	LeaseTimeout() time.Duration
+//
+// Time span without requests after the server will close the connection. When
+// the WithKeepAlive() option is used, the connection will send a Ping request
+// shortly before this time span ends.
+//
+//	LastReceived() time.Time
+//
+// Timestamp when the last response from the server was received. The Client
+// uses this information to decide if to send a request over the current
+// connection or to open a new one. By this, timeouts caused by servers which do
+// not close the net.Conn directly after they decide to close the SIP connection
+// can be evaded.
+type ConnProperties interface {
+	Connected() bool
+
+	BusyTimeout() time.Duration
+	LeaseTimeout() time.Duration
+	LastReceived() time.Time
+
+	MessageTypes() []uint32
+}
+
+// Dial opens a Conn and connects it.
+func Dial(network, address string, options ...ConnOption) (Conn, error) {
+	netConn, err := net.Dial(network, address)
+	if err != nil {
+		return nil, errtrace.Wrap(err)
 	}
+	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+
+	c := &conn{
+		Conn: netConn,
+		connOptions: connOptions{
+			userBusyTimeout:  2000,
+			userLeaseTimeout: 10000,
+		},
+		timeoutReader: &timeoutReader{reader: netConn},
+
+		reqCh:                make(chan request),
+		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
+		respChans:            map[uint32]chan func(PDU) error{},
+	}
+	// Default: Allow practically infinite parallel transactions
+	_ = WithConcurrentTransactionLimit(5000)(&c.connOptions)
+	// But what does the user want?
 	for _, option := range options {
-		if err := option(c); err != nil {
-			return nil, err
+		if err := option(&c.connOptions); err != nil {
+			return nil, errtrace.Wrap(err)
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	err = <-c.connLoop(network, address)
-	return c, err
+	go c.sendLoop(sendRecvCtx, cancel)
+	go c.receiveLoop(sendRecvCtx, cancel)
+	go func() {
+		<-sendRecvCtx.Done()
+		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
+	}()
+
+	return c, errtrace.Wrap(c.connect())
 }
 
-func (c *Conn) Close() error {
+func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
-	return c.cleanUp()
+	return errtrace.Wrap(c.cleanUp())
 }
 
-func (c *Conn) cleanUp() (err error) {
-	c.mxState.Lock()
-	defer c.mxState.Unlock()
-
-	if c.reqCh != nil {
-		close(c.reqCh)
-		c.reqCh = nil
-	}
-	if c.concurrentTransactionsCh != nil {
-		close(c.concurrentTransactionsCh)
-		c.concurrentTransactionsCh = nil
-	}
-	if c.concurrentTransactionLimitCh != nil {
-		close(c.concurrentTransactionLimitCh)
-		c.concurrentTransactionLimitCh = nil
-	}
-
-	if c.Conn != nil {
-		err = c.Conn.Close()
-		c.Conn = nil
-	}
-	return err
-}
-
-func (c *Conn) Connected() bool {
+func (c *conn) Connected() bool {
 	c.mxCR.RLock()
-	defer c.mxCR.RUnlock()
+	c.mxState.RLock()
 
-	return c.connectResponse.Version != 0
+	defer c.mxCR.RUnlock()
+	defer c.mxState.RUnlock()
+
+	return c.Conn != nil && c.connectResponse.Version != 0
 }
 
-func (c *Conn) BusyTimeout() time.Duration {
+func (c *conn) BusyTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return time.Millisecond * time.Duration(c.connectResponse.BusyTimeout)
 }
 
-func (c *Conn) LeaseTimeout() time.Duration {
+func (c *conn) LeaseTimeout() time.Duration {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return time.Millisecond * time.Duration(c.connectResponse.LeaseTimeout)
 }
 
-func (c *Conn) MessageTypes() []uint32 {
+func (c *conn) LastReceived() time.Time {
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
+
+	return c.lastReceived
+}
+
+func (c *conn) MessageTypes() []uint32 {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
 	return c.connectResponse.MessageTypes
 }
 
-func (c *Conn) Ping() error {
-	return c.sendWaitForResponse(&PingRequest{})(&PingResponse{})
+func (c *conn) Ping(ctx context.Context) error {
+	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{}))
 }
 
-func (c *Conn) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
-	resp := ReadEverythingResponse{}
-	return resp, c.sendWaitForResponse(&ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
+	return *resp, errtrace.Wrap(err)
 }
 
-func (c *Conn) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
-	resp := ReadOnlyDataResponse{}
-	return resp, c.sendWaitForResponse(&ReadOnlyDataRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
+	return *resp, errtrace.Wrap(err)
 }
 
-func (c *Conn) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
-	resp := ReadDescriptionResponse{}
-	return resp, c.sendWaitForResponse(&ReadDescriptionRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
+	return *resp, errtrace.Wrap(err)
 }
 
-func (c *Conn) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
-	resp := ReadDataStateResponse{}
-	return resp, c.sendWaitForResponse(&ReadDataStateRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
-		IDN:            idn,
-	})(&resp)
+func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
+	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
+	return *resp, errtrace.Wrap(err)
 }
 
-func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	return c.sendWaitForResponse(&WriteDataRequest{
+func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			SlaveIndex:     uint16(slaveIndex),
 			SlaveExtension: uint16(slaveExtension),
@@ -129,5 +189,5 @@ func (c *Conn) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte
 			DataLength:     uint32(len(data)),
 		},
 		Data: data,
-	})(&WriteDataResponse{})
+	}, &WriteDataResponse{}))
 }

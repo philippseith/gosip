@@ -1,16 +1,16 @@
 package sip_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
 )
 
-var address = "127.0.0.2:35021"
-
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
@@ -19,38 +19,42 @@ func TestConnect(t *testing.T) {
 
 func TestConnectNoServer(t *testing.T) {
 	conn, err := sip.Dial("tcp", "localhost:35022")
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.Error(t, err)
 }
 
 func TestConnectTimeout(t *testing.T) {
-	conn, err := sip.Dial("tcp", address, sip.BusyTimeout(1))
+	conn, err := sip.Dial("tcp", serverAddress, sip.WithBusyTimeout(1))
 
 	assert.Nil(t, conn)
 	assert.Error(t, err)
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 	defer func() { _ = conn.Close() }()
 
 	assert.NoError(t, err)
 
-	err = conn.Ping()
+	err = conn.Ping(context.Background())
 
 	assert.NoError(t, err)
 }
 
 func TestPingShortClosedConnection(t *testing.T) {
-	conn, err := sip.Dial("tcp", address)
+	conn, err := sip.Dial("tcp", serverAddress)
 
 	assert.NotNil(t, conn)
 	assert.NoError(t, err)
 
 	assert.NoError(t, conn.Close())
 
-	err = conn.Ping()
+	err = conn.Ping(context.Background())
 
-	assert.Equal(t, sip.ErrorClosed, err)
+	assert.True(t, errors.Is(err, sip.ErrorClosed))
 }

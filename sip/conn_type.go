@@ -5,29 +5,28 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
-type Conn struct {
+type conn struct {
 	net.Conn
+	connOptions
 	timeoutReader *timeoutReader
 	mxRecv        sync.Mutex
 
 	transactionID uint32
 
-	reqCh                        chan request
-	concurrentTransactionLimitCh chan struct{}
-	concurrentTransactionsCh     chan struct{}
+	reqCh                chan request
+	transactionStartedCh chan struct{}
 
 	respChans map[uint32]chan func(PDU) error
 	mxRC      sync.RWMutex
 
-	userBusyTimeout  uint32
-	userLeaseTimeout uint32
-
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex
 
-	cancel context.CancelCauseFunc
+	cancel       context.CancelCauseFunc
+	lastReceived time.Time
 
 	mxState sync.RWMutex
 }

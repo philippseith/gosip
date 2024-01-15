@@ -4,30 +4,32 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"braces.dev/errtrace"
 )
 
 // Exception, MessageType: 67.
 // It contains a common error code and an optional service specific error code.
 type Exception struct {
-	CommomErrorCode   uint16
+	CommonErrorCode   uint16
 	SpecificErrorCode uint32
 }
 
 func (c *Exception) Read(reader io.Reader) error {
-	return binary.Read(reader, binary.LittleEndian, c)
+	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, c))
 }
 
 func (c *Exception) Write(writer io.Writer) error {
-	return binary.Write(writer, binary.LittleEndian, *c)
+	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *c))
 }
 
-func (c *Exception) MessageType() uint32 {
+func (c *Exception) MessageType() MessageType {
 	return ExceptionMsgType
 }
 
 func (c Exception) Error() string {
 	var commonError string
-	switch c.CommomErrorCode {
+	switch c.CommonErrorCode {
 	case ConnectionError:
 		commonError = "ConnectionError"
 	case TimeoutError:

@@ -1,49 +1,70 @@
 package sip
 
-import "fmt"
+import (
+	"fmt"
 
-func BusyTimeout(timeout int) func(c *Conn) error {
-	return func(c *Conn) error {
+	"braces.dev/errtrace"
+	"github.com/cenkalti/backoff/v4"
+)
+
+// ConnOption is option for Conn
+type ConnOption func(c *connOptions) error
+
+type connOptions struct {
+	userBusyTimeout              uint32
+	userLeaseTimeout             uint32
+	concurrentTransactionLimitCh chan struct{}
+	sendKeepAlive                bool
+	backoffFactory               func() backoff.BackOff
+}
+
+// WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
+func WithBusyTimeout(timeout int) ConnOption {
+	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
 		}
-		return fmt.Errorf("%w: Timeout must be greater 0", Error)
+		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 
-func LeaseTimeout(timeout int) func(c *Conn) error {
-	return func(c *Conn) error {
+// WithLeaseTimeout sets the LeaseTimeout to negotiate with the server in ms. Default is 10000ms.
+func WithLeaseTimeout(timeout int) ConnOption {
+	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
 		}
-		return fmt.Errorf("%w: Timeout must be greater 0", Error)
+		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 
-// ConcurrentTransactions limits the number of concurrent requests sent.
+// WithConcurrentTransactionLimit limits the number of concurrent requests sent.
 // If the option is not given in Dial, the concurrency is not limited.
-func ConcurrentTransactions(ct uint) func(c *Conn) error {
-	return func(c *Conn) error {
-		if ct > 0 {
-			c.concurrentTransactionLimitCh = make(chan struct{}, ct)
+func WithConcurrentTransactionLimit(ct uint) ConnOption {
+	return func(c *connOptions) error {
+		c.concurrentTransactionLimitCh = make(chan struct{}, ct)
+		for i := uint(0); i < ct; i++ {
+			c.concurrentTransactionLimitCh <- struct{}{}
 		}
 		return nil
 	}
 }
 
-// SendKeepAlive configures the connection that it is sending Ping requests
+// WithSendKeepAlive configures the connection that it is sending Ping requests
 // shortly before the LeaseTimeout ends.
-func SendKeepAlive() func(c *Conn) error {
-	// TODO
-	return func(c *Conn) error { return nil }
+func WithSendKeepAlive() func(c *connOptions) error {
+	return func(c *connOptions) error {
+		c.sendKeepAlive = true
+		return nil
+	}
 }
 
-// MeasureNetworkLatencyICMP measures the network latency with an ICMP ping.
+// WithMeasureNetworkLatencyICMP measures the network latency with an ICMP ping.
 // If not set, the network latency is measured with S/IP Ping, which might lead
 // to different latency results, depending on the server implementation.
 // Note that ICMP ping requires specific system config options mentioned here:
 // https://github.com/prometheus-community/#supported-operating-systems
-func MeasureNetworkLatencyICMP() func(c *Conn) error {
+func WithMeasureNetworkLatencyICMP() ConnOption {
 	// TODO
-	return func(c *Conn) error { return nil }
+	return func(c *connOptions) error { return nil }
 }
