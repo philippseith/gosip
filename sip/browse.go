@@ -60,9 +60,21 @@ func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.P
 	return conns, ch, nil
 }
 
-// SendBrowseRequest sends a BrowseRequest on the passed net.PacketConn from ListenToBrowseResponses.
+// BroadcastBrowseRequest broadcasts a BrowseRequest on the passed net.PacketConn from ListenToBrowseResponses.
 // Note that the net.PacketConn will be closed when ListenToBrowseResponses is canceled.
-func SendBrowseRequest(conn net.PacketConn) error {
+func BroadcastBrowseRequest(conn net.PacketConn) error {
+	return sendBrowseRequest(conn, "255.255.255.255")
+}
+
+// SendBrowseRequest sends a BrowseRequest on the passed net.PacketConn to a dedicated IP address.
+func SendBrowseRequest(conn net.PacketConn, address string) error {
+	if net.ParseIP(address) == nil {
+		return errtrace.Wrap(fmt.Errorf("%w: %s is not a valid IP address", Error, address))
+	}
+	return sendBrowseRequest(conn, address)
+}
+
+func sendBrowseRequest(conn net.PacketConn, address string) error {
 	writer := bytes.NewBuffer(make([]byte, 0, 17))
 	// Write header to buffer
 	hdr := Header{
@@ -76,7 +88,7 @@ func SendBrowseRequest(conn net.PacketConn) error {
 	// Write BrowseRequest to buffer
 	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return errtrace.Wrap(fmt.Errorf("can not convert to net.UDPAddr: %s", conn.LocalAddr().String()))
+		return errtrace.Wrap(fmt.Errorf("%w: can not convert to net.UDPAddr: %s", Error, conn.LocalAddr().String()))
 	}
 	req := BrowseRequest{
 		IPAddress:          [4]byte(udpAddr.IP.To4()),
@@ -89,7 +101,7 @@ func SendBrowseRequest(conn net.PacketConn) error {
 		return errtrace.Wrap(err)
 	}
 	// Create broadcast address
-	broadcastAddr, err := net.ResolveUDPAddr("udp4", "255.255.255.255:35021")
+	broadcastAddr, err := net.ResolveUDPAddr("udp4", address+":35021")
 	if err != nil {
 		return errtrace.Wrap(err)
 	}
@@ -98,7 +110,8 @@ func SendBrowseRequest(conn net.PacketConn) error {
 	return errtrace.Wrap(err)
 }
 
-// Browse calls ListenToBrowseResponses and sends one BrowseRequest.
+// Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
+// The Listening ends when ctx is canceled.
 func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResponse], error) {
 	conns, ch, err := ListenToBrowseResponses(ctx, interfaceName)
 	if err != nil {
@@ -107,7 +120,7 @@ func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResp
 
 	var allErr error
 	for _, conn := range conns {
-		allErr = errors.Join(allErr, SendBrowseRequest(conn))
+		allErr = errors.Join(allErr, BroadcastBrowseRequest(conn))
 	}
 	return ch, errtrace.Wrap(allErr)
 }
