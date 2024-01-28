@@ -75,39 +75,17 @@ func SendBrowseRequest(conn net.PacketConn, address string) error {
 }
 
 func sendBrowseRequest(conn net.PacketConn, address string) error {
-	writer := bytes.NewBuffer(make([]byte, 0, 17))
-	// Write header to buffer
-	hdr := Header{
-		TransactionID: 1,
-		MessageType:   BrowseRequestMsgType,
-	}
-	err := hdr.Write(writer)
-	if err != nil {
-		return errtrace.Wrap(err)
-	}
-	// Write BrowseRequest to buffer
 	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		return errtrace.Wrap(fmt.Errorf("%w: can not convert to net.UDPAddr: %s", Error, conn.LocalAddr().String()))
 	}
-	req := BrowseRequest{
+	req := &BrowseRequest{
 		IPAddress:          [4]byte(udpAddr.IP.To4()),
 		MasterOnly:         false,
 		LowerSercosAddress: 0,
 		UpperSercosAddress: 511,
 	}
-	err = req.Write(writer)
-	if err != nil {
-		return errtrace.Wrap(err)
-	}
-	// Create broadcast address
-	broadcastAddr, err := net.ResolveUDPAddr("udp4", address+":35021")
-	if err != nil {
-		return errtrace.Wrap(err)
-	}
-	// Send the request
-	_, err = conn.WriteTo(writer.Bytes(), broadcastAddr)
-	return errtrace.Wrap(err)
+	return sendUDP(conn, address, req)
 }
 
 // Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
