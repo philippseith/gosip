@@ -1,14 +1,12 @@
 package sip
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -20,13 +18,13 @@ import (
 // The returned net.PacketConn should be used to send BrowseRequests on the listened port.
 // The channel returns any valid BrowseResponse that is received, all errors occured while parsing received packages
 // and all errors with the net.PacketConn. The connection and the channel are closed in case of errors of the latter category.
-func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.PacketConn, <-chan Result[BrowseResponse], error) {
-	conns, err := newConn(interfaceName)
+func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.PacketConn, <-chan Result[*BrowseResponse], error) {
+	conns, err := connsForInterface(interfaceName)
 	if err != nil {
 		return nil, nil, errtrace.Wrap(err)
 	}
 
-	ch := make(chan Result[BrowseResponse], 512) // Such many devices should be a pretty uncommon case
+	ch := make(chan Result[*BrowseResponse], 512) // Such many devices should be a pretty uncommon case
 	var wg sync.WaitGroup
 
 	for _, conn := range conns {
@@ -44,7 +42,9 @@ func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.P
 					return
 				default:
 					// Blocks until a reponse comes in or a 1 sec timeout elapses
-					if !listenToBrowseResponse(conn, ch) {
+					if !listenUDP(conn, time.Second, func() *BrowseResponse {
+						return &BrowseResponse{}
+					}, ch) {
 						return
 					}
 				}
@@ -90,7 +90,7 @@ func sendBrowseRequest(conn net.PacketConn, address string) error {
 
 // Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
 // The Listening ends when ctx is canceled.
-func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResponse], error) {
+func Browse(ctx context.Context, interfaceName string) (<-chan Result[*BrowseResponse], error) {
 	conns, ch, err := ListenToBrowseResponses(ctx, interfaceName)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
@@ -103,7 +103,7 @@ func Browse(ctx context.Context, interfaceName string) (<-chan Result[BrowseResp
 	return ch, errtrace.Wrap(allErr)
 }
 
-func newConn(interfaceName string) ([]net.PacketConn, error) {
+func connsForInterface(interfaceName string) ([]net.PacketConn, error) {
 	ips, err := findIPV4OfInterface(interfaceName)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
@@ -113,13 +113,7 @@ func newConn(interfaceName string) ([]net.PacketConn, error) {
 	conns := make([]net.PacketConn, 0, len(ips))
 	for _, ip := range ips {
 
-		listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
-		if err != nil {
-			allErr = errors.Join(allErr, err)
-			continue
-		}
-
-		conn, err := net.ListenUDP("udp4", listenAddr)
+		conn, err := newUDPConn(ip)
 		if err != nil {
 			allErr = errors.Join(allErr, err)
 			continue
@@ -158,44 +152,6 @@ func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 		return nil, errtrace.Wrap(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
 	}
 	return ipV4s, nil
-}
-
-func listenToBrowseResponse(conn net.PacketConn, ch chan<- Result[BrowseResponse]) bool {
-	err := conn.SetReadDeadline(time.Now().Add(time.Second))
-	if err != nil {
-		ch <- Err[BrowseResponse](errtrace.Wrap(err))
-		// If setting the deadline does not work,
-		// the go func might not end. We break here.
-		return false
-	}
-	buf := make([]byte, 1024)
-	n, _, err := conn.ReadFrom(buf)
-	if err != nil {
-		// Timeouts are expected and used to check ctx.Done() in regular intervals
-		// See https://pkg.go.dev/net@go1.18.3#Conn.SetDeadline
-		if errors.Is(err, os.ErrDeadlineExceeded) {
-			return true
-		}
-		ch <- Err[BrowseResponse](errtrace.Wrap(err))
-		// If ReadFrom errored with something different we need to stop
-		return false
-	}
-	reader := bytes.NewReader(buf[:n])
-	hdr := Header{}
-	err = hdr.Read(reader)
-	if err != nil || hdr.MessageType != BrowseResponseMsgType {
-		return true
-	}
-	resp := BrowseResponse{}
-	err = resp.Read(reader)
-	if err == nil {
-		ch <- Ok[BrowseResponse](resp)
-	} else {
-		ch <- Err[BrowseResponse](errtrace.Wrap(fmt.Errorf(
-			"%w: Can not parse packet as BrowseResponse %v: %w", Error, buf[:n], err)))
-		// Do not end the listening, there might come more (valid) responses
-	}
-	return true
 }
 
 type BrowseRequest struct {

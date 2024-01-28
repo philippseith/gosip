@@ -4,13 +4,20 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"time"
 
 	"braces.dev/errtrace"
 )
+
+func newUDPConn(ip net.IP) (*net.UDPConn, error) {
+	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
+	if err != nil {
+		return nil, err
+	}
+	return net.ListenUDP("udp4", listenAddr)
+}
 
 func sendUDP(conn net.PacketConn, address string, pdu PDU) error {
 	writer := bytes.NewBuffer(make([]byte, 0, 17))
@@ -37,7 +44,7 @@ func sendUDP(conn net.PacketConn, address string, pdu PDU) error {
 	return errtrace.Wrap(err)
 }
 
-func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, readPDU func(io.Reader) (T, error), ch chan<- Result[T]) bool {
+func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse func() T, ch chan<- Result[T]) bool {
 	err := conn.SetReadDeadline(time.Now().Add(timeout))
 	if err != nil {
 		ch <- Err[T](errtrace.Wrap(err))
@@ -63,7 +70,8 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, readPDU func(i
 	if err != nil || hdr.MessageType != BrowseResponseMsgType {
 		return true
 	}
-	resp, err := readPDU(reader)
+	resp := newResponse()
+	err = resp.Read(reader)
 	if err == nil {
 		ch <- Ok[T](resp)
 	} else {
