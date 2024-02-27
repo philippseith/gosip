@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -43,7 +42,7 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 			}
 		}
 	}()
-	log.Printf("breaking sendLoop: %v", err)
+	logger.Printf("breaking sendLoop: %v", err)
 }
 
 // receiveLoop receives responses from the server and dispatches them to . Before
@@ -74,7 +73,7 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 			}
 		}
 	}()
-	log.Printf("breaking receiveLoop: %v", err)
+	logger.Printf("breaking receiveLoop: %v", err)
 }
 
 // dequeueRequest fetches a request from the request queue.

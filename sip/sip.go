@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"os"
 )
 
 // Port is the default SIP port
@@ -23,3 +25,5 @@ type PDU interface {
 	Write(io.Writer) error
 	MessageType() MessageType
 }
+
+var logger = log.New(os.Stderr, "sip: ", log.Lmicroseconds)
