@@ -123,7 +123,7 @@ type client struct {
 	address        string
 	options        []ConnOption
 	backoffFactory func() backoff.BackOff
-	backoff        backoff.BackOff
+	backOff        backoff.BackOff
 	// Sync the tryConnect process
 	mxTryConnect sync.Mutex
 }
@@ -322,12 +322,12 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		return nil
 	}
 
-	if c.backoff == nil {
-		c.backoff = c.backoffFactory()
+	if c.backOff == nil {
+		c.backOff = c.backoffFactory()
 	}
 
 	ch := make(chan Result[Conn])
-	go c.dialWithBackoff(ctx, ch)
+	go dialWithBackOff(ctx, ch, c.network, c.address, c.backOff, c.options...)
 
 	// Either the context timed out or the go func returned
 	select {
@@ -340,6 +340,8 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		if result.Err != nil {
 			return result.Err
 		}
+		// When connecting worked, the backoff has to start anew with the next request
+		c.backOff = nil
 
 		func() {
 			c.mxConn.Lock()
@@ -351,7 +353,7 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	}
 }
 
-func (c *client) dialWithBackoff(ctx context.Context, ch chan Result[Conn]) {
+func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, address string, clientBackOff backoff.BackOff, options ...ConnOption) {
 	defer close(ch)
 
 	var spanSum time.Duration
@@ -359,16 +361,13 @@ func (c *client) dialWithBackoff(ctx context.Context, ch chan Result[Conn]) {
 	for {
 		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
 		// nolint:contextcheck
-		conn, err := Dial(c.network, c.address, c.options...) // This might hang until the stack decices it is done or failed
+		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
-			// When connecting worked, the backoff has to start anew with the next request
-			c.backoff = nil
-
 			ch <- Ok[Conn](conn)
 			return
 		}
 
-		backoffSpan := c.backoff.NextBackOff()
+		backoffSpan := clientBackOff.NextBackOff()
 
 		if backoffSpan == backoff.Stop {
 			ch <- Err[Conn](errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)))

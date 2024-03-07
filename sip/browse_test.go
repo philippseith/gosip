@@ -16,7 +16,7 @@ func TestBrowse(t *testing.T) {
 	ch, err := sip.Browse(ctx, interfaceName)
 	assert.NoError(t, err)
 
-	var resps []sip.BrowseResponse
+	var resps []*sip.BrowseResponse
 	for resp := range ch {
 		assert.NoError(t, resp.Err)
 		if resp.Err == nil {

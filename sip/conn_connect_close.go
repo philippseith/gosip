@@ -2,7 +2,6 @@ package sip
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"braces.dev/errtrace"
@@ -42,7 +41,7 @@ func (c *conn) sendKeepAliveLoop() {
 	err := c.Ping(ctx)
 	cancel()
 	if err != nil {
-		log.Printf("sendKeepAlive: %v", err)
+		logger.Printf("sendKeepAlive: %v", err)
 		return
 	}
 
@@ -54,7 +53,7 @@ func (c *conn) sendKeepAliveLoop() {
 		err := c.Ping(ctx)
 		cancel()
 		if err != nil {
-			log.Printf("sendKeepAlive: %v", err)
+			logger.Printf("sendKeepAlive: %v", err)
 			break
 		}
 	}
