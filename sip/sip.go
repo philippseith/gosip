@@ -26,4 +26,4 @@ type PDU interface {
 	MessageType() MessageType
 }
 
-var logger = log.New(os.Stderr, "sip: ", log.Lmicroseconds)
+var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
