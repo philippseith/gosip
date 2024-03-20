@@ -30,6 +30,7 @@ type Conn interface {
 	WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error
 
 	Close() error
+	Closed() bool
 }
 
 // ConnProperties describes the properties of a Conn.
@@ -111,7 +112,22 @@ func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
+
+	func() {
+		c.mxState.Lock()
+		defer c.mxState.Unlock()
+
+		c.closed = true
+	}()
+
 	return errtrace.Wrap(c.cleanUp())
+}
+
+func (c *conn) Closed() bool {
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
+
+	return c.closed
 }
 
 func (c *conn) Connected() bool {

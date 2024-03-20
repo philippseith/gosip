@@ -29,6 +29,7 @@ type conn struct {
 	lastReceived time.Time
 
 	mxState sync.RWMutex
+	closed  bool
 }
 
 type request struct {

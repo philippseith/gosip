@@ -41,6 +41,7 @@ type Client interface {
 	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
 
 	Close() error
+	Closed() bool
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can
@@ -139,6 +140,14 @@ func (c *client) Connected() bool {
 	conn := c.Conn()
 	if conn != nil {
 		return conn.Connected()
+	}
+	return false
+}
+
+func (c *client) Closed() bool {
+	conn := c.Conn()
+	if conn != nil {
+		return conn.Closed()
 	}
 	return false
 }
@@ -329,6 +338,10 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	ch := make(chan Result[Conn])
 	go dialWithBackOff(ctx, ch, c.network, c.address, c.backOff, c.options...)
 
+	return c.waitForDialWithBackoff(ctx, ch)
+}
+
+func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Conn]) error {
 	// Either the context timed out or the go func returned
 	select {
 	case <-ctx.Done():
@@ -336,6 +349,11 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	case result := <-ch:
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
+		}
+		if errors.Is(result.Err, ErrorRetriesExceeded) {
+			// When the backoff has been exhausted, the connection has to be closed
+			c.Close()
+			return result.Err
 		}
 		if result.Err != nil {
 			return result.Err
