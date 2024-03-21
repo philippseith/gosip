@@ -103,6 +103,7 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	go func() {
 		<-sendRecvCtx.Done()
 		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
+		c.setClosed()
 	}()
 
 	return c, errtrace.Wrap(c.connect())
@@ -112,15 +113,15 @@ func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
-
-	func() {
-		c.mxState.Lock()
-		defer c.mxState.Unlock()
-
-		c.closed = true
-	}()
-
+	c.setClosed()
 	return errtrace.Wrap(c.cleanUp())
+}
+
+func (c *conn) setClosed() {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	c.closed = true
 }
 
 func (c *conn) Closed() bool {
