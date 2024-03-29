@@ -69,11 +69,14 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
+	return dial(context.Background(), network, address, options...)
+}
+func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
 	netConn, err := net.Dial(network, address)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}
-	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+	sendRecvCtx, cancel := context.WithCancelCause(ctx)
 
 	c := &conn{
 		Conn: netConn,
@@ -106,7 +109,7 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 		c.setClosed()
 	}()
 
-	return c, errtrace.Wrap(c.connect())
+	return c, errtrace.Wrap(c.connect(ctx))
 }
 
 func (c *conn) Close() error {

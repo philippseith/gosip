@@ -7,30 +7,34 @@ import (
 	"braces.dev/errtrace"
 )
 
-func (c *conn) connect() error {
+func (c *conn) connect(ctx context.Context) error {
 	// TODO detect network latency and add it to the busy timeout
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
-	respFunc := <-c.sendRequest(&ConnectRequest{
+	select {
+	case <-ctx.Done():
+		return errtrace.Wrap(ctx.Err())
+	case respFunc := <-c.sendRequest(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
 		LeaseTimeout: c.userLeaseTimeout,
-	})
-	respPdu := &ConnectResponse{}
-	if err := respFunc(respPdu); err != nil {
-		return errtrace.Wrap(err)
-	}
-	func() {
-		c.mxCR.Lock()
-		defer c.mxCR.Unlock()
-
-		c.connectResponse = *respPdu
-		c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
-		// Eventually start the KeepAlive loop
-		if c.sendKeepAlive {
-			go c.sendKeepAliveLoop()
+	}):
+		respPdu := &ConnectResponse{}
+		if err := respFunc(respPdu); err != nil {
+			return errtrace.Wrap(err)
 		}
-	}()
-	return nil
+		func() {
+			c.mxCR.Lock()
+			defer c.mxCR.Unlock()
+
+			c.connectResponse = *respPdu
+			c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
+			// Eventually start the KeepAlive loop
+			if c.sendKeepAlive {
+				go c.sendKeepAliveLoop()
+			}
+		}()
+		return nil
+	}
 }
 
 func (c *conn) sendKeepAliveLoop() {
