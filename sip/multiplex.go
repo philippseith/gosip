@@ -6,11 +6,11 @@ import (
 	"net"
 )
 
-func Multiplex(ctx context.Context, listener net.Listener, targetNetwork, targetAddress string, options ...ConnOption) (context.CancelFunc, error) {
+func Multiplex(ctx context.Context, listener net.Listener, targetNetwork, targetAddress string, options ...ConnOption) error {
 	conn, err := dial(ctx, targetNetwork, targetAddress, options...)
 	// TODO execute Connect to get the BusyTimeout and LeaseTimeout
 	if err != nil {
-		return nil, err
+		return err
 	}
 	m := &multiplexer{
 		target: conn,
@@ -24,6 +24,7 @@ func Multiplex(ctx context.Context, listener net.Listener, targetNetwork, target
 			default:
 				conn, err := listener.Accept()
 				if ctx.Err() != nil {
+					conn.Close()
 					return
 				}
 				if err != nil {
@@ -33,7 +34,7 @@ func Multiplex(ctx context.Context, listener net.Listener, targetNetwork, target
 			}
 		}
 	}()
-	return nil, nil
+	return nil
 }
 
 type multiplexer struct {
