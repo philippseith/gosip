@@ -66,5 +66,5 @@ func WithSendKeepAlive() func(c *connOptions) error {
 // https://github.com/prometheus-community/#supported-operating-systems
 func WithMeasureNetworkLatencyICMP() ConnOption {
 	// TODO
-	return func(c *connOptions) error { return nil }
+	return func(c *connOptions) error { return nil } // nolint:revive
 }
