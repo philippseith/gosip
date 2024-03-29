@@ -203,10 +203,12 @@ func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
 	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
-			IDN:            idn,
-			DataLength:     uint32(len(data)),
+			Request: Request{
+				SlaveIndex:     uint16(slaveIndex),
+				SlaveExtension: uint16(slaveExtension),
+				IDN:            idn,
+			},
+			DataLength: uint32(len(data)),
 		},
 		Data: data,
 	}, &WriteDataResponse{}))
