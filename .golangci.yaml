@@ -1,7 +1,5 @@
 run:
   tests: false
-  skip-dirs:
-    - rx_test
 linters:
   enable:
     - asasalint
