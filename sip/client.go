@@ -23,25 +23,30 @@ import (
 // Close closes the currently open connection, if there is anyone yet.
 type Client interface {
 	ConnProperties
+	SyncClient
 
-	Ping(options ...RequestOption) error
 	GoPing(options ...RequestOption) <-chan error
-
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
 
 	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse]
 	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse]
 	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse]
 	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse]
 
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
 	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
 
 	Close() error
 	Closed() bool
+}
+
+type SyncClient interface {
+	Ping(options ...RequestOption) error
+
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
+
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can

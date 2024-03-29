@@ -16,6 +16,7 @@ var Error = errors.New("S/IP")
 
 var ErrorTimeout = fmt.Errorf("%w: Timeout", Error)
 var ErrorClosed = fmt.Errorf("%w: Connection closed", Error)
+var ErrorInvalidRequestMessageType = fmt.Errorf("%w: Invalid request message type", Error)
 var ErrorInvalidResponseMessageType = fmt.Errorf("%w: Invalid response message type", Error)
 var ErrorRetriesExceeded = fmt.Errorf("%w: Reconnect timeout exceeded", Error)
 
