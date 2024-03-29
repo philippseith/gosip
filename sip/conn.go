@@ -2,6 +2,7 @@ package sip
 
 import (
 	"context"
+	"io"
 	"net"
 	"time"
 
@@ -80,21 +81,23 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		}
 	}
 	// Fallback to net.Dial if no WithConnnection is given
-	if wcOpts.conn == nil {
-		var err error
-		wcOpts.conn, err = net.Dial(network, address)
-		if err != nil {
-			return nil, errtrace.Wrap(err)
+	if wcOpts.dial == nil {
+		wcOpts.dial = func() (io.ReadWriteCloser, error) {
+			return net.Dial(network, address)
 		}
+	}
+	netConn, err := wcOpts.dial()
+	if err != nil {
+		return nil, errtrace.Wrap(err)
 	}
 
 	c := &conn{
-		Conn: wcOpts.conn,
+		Conn: netConn,
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
 		},
-		timeoutReader: &timeoutReader{reader: wcOpts.conn},
+		timeoutReader: &timeoutReader{reader: netConn},
 
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type

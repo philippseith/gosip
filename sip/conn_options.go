@@ -12,7 +12,7 @@ import (
 type ConnOption func(c *connOptions) error
 
 type connOptions struct {
-	conn                         io.ReadWriteCloser
+	dial                         func() (io.ReadWriteCloser, error)
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -74,9 +74,9 @@ func WithMeasureNetworkLatencyICMP() ConnOption {
 // WithConnection surpasses the net.Conn from the Dial function.
 // This option can be used for testing, logging, middleware purposes in general,
 // or exotic connection types.
-func WithConnnection(conn io.ReadWriteCloser) ConnOption {
+func WithConnnection(dial func() (io.ReadWriteCloser, error)) ConnOption {
 	return func(c *connOptions) error {
-		c.conn = conn
+		c.dial = dial
 		return nil
 	}
 }
