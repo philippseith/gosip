@@ -26,4 +26,11 @@ type PDU interface {
 	MessageType() MessageType
 }
 
+// Request is the address part of a PDU
+type Request struct {
+	SlaveIndex     uint16
+	SlaveExtension uint16
+	IDN            uint32
+}
+
 var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)

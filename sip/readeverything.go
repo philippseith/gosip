@@ -1,16 +1,13 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
+
+	"braces.dev/errtrace"
 )
 
-type ReadEverythingRequest struct {
-	SlaveIndex     uint16
-	SlaveExtension uint16
-	IDN            uint32
-}
+type ReadEverythingRequest Request
 
 func (r *ReadEverythingRequest) Read(reader io.Reader) error {
 	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))

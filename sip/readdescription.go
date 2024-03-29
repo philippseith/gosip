@@ -1,16 +1,13 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
+
+	"braces.dev/errtrace"
 )
 
-type ReadDescriptionRequest struct {
-	SlaveIndex     uint16
-	SlaveExtension uint16
-	IDN            uint32
-}
+type ReadDescriptionRequest Request
 
 func (r *ReadDescriptionRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
 	r.SlaveIndex = uint16(slaveIndex)
