@@ -59,9 +59,9 @@ func (c connServer) handleMessages() error {
 	}
 	switch h.MessageType {
 	case ConnectRequestMsgType:
-		return c.handleDataState()
+		return nil // TODO Implement
 	case PingRequestMsgType:
-		return c.handleDataState()
+		return nil // TODO Implement
 	case ReadDataStateRequestMsgType:
 		return c.handleDataState()
 	case ReadDescriptionRequestMsgType:
@@ -71,7 +71,7 @@ func (c connServer) handleMessages() error {
 	case ReadOnlyDataRequestMsgType:
 		return c.handleReadOnlyData()
 	case WriteDataRequestMsgType:
-		return c.handleDataState()
+		return nil // TODO Implement
 	default:
 		return ErrorInvalidRequestMessageType
 	}
