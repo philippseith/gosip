@@ -2,6 +2,7 @@ package sip
 
 import (
 	"fmt"
+	"io"
 
 	"braces.dev/errtrace"
 	"github.com/cenkalti/backoff/v4"
@@ -11,6 +12,7 @@ import (
 type ConnOption func(c *connOptions) error
 
 type connOptions struct {
+	conn                         io.ReadWriteCloser
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -52,7 +54,7 @@ func WithConcurrentTransactionLimit(ct uint) ConnOption {
 
 // WithSendKeepAlive configures the connection that it is sending Ping requests
 // shortly before the LeaseTimeout ends.
-func WithSendKeepAlive() func(c *connOptions) error {
+func WithSendKeepAlive() ConnOption {
 	return func(c *connOptions) error {
 		c.sendKeepAlive = true
 		return nil
@@ -67,4 +69,14 @@ func WithSendKeepAlive() func(c *connOptions) error {
 func WithMeasureNetworkLatencyICMP() ConnOption {
 	// TODO
 	return func(c *connOptions) error { return nil } // nolint:revive
+}
+
+// WithConnection surpasses the net.Conn from the Dial function.
+// This option can be used for testing, logging, middleware purposes in general,
+// or exotic connection types.
+func WithConnnection(conn io.ReadWriteCloser) ConnOption {
+	return func(c *connOptions) error {
+		c.conn = conn
+		return nil
+	}
 }

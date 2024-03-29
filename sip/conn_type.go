@@ -3,13 +3,12 @@ package sip
 import (
 	"context"
 	"io"
-	"net"
 	"sync"
 	"time"
 )
 
 type conn struct {
-	net.Conn
+	Conn io.ReadWriteCloser
 	connOptions
 	timeoutReader *timeoutReader
 	mxRecv        sync.Mutex

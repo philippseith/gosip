@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-func Multiplex(ctx context.Context, network, address, targetNetwork, targetAddress string, options ...ConnOption) (context.CancelFunc, error) {
+func Multiplex(ctx context.Context, listener net.Listener, targetNetwork, targetAddress string, options ...ConnOption) (context.CancelFunc, error) {
 	conn, err := dial(ctx, targetNetwork, targetAddress, options...)
 	// TODO execute Connect to get the BusyTimeout and LeaseTimeout
 	if err != nil {
@@ -15,10 +15,6 @@ func Multiplex(ctx context.Context, network, address, targetNetwork, targetAddre
 	m := &multiplexer{
 		target: conn,
 		jobs:   map[multiplexJob][]chan PDU{},
-	}
-	listener, err := net.Listen(network, address)
-	if err != nil {
-		return nil, err
 	}
 	go func() {
 		for {

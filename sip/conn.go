@@ -72,19 +72,29 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	return dial(context.Background(), network, address, options...)
 }
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
-	netConn, err := net.Dial(network, address)
-	if err != nil {
-		return nil, errtrace.Wrap(err)
+	// Check for WithConnnection option
+	wcOpts := &connOptions{}
+	for _, option := range options {
+		if err := option(wcOpts); err != nil {
+			return nil, errtrace.Wrap(err)
+		}
 	}
-	sendRecvCtx, cancel := context.WithCancelCause(ctx)
+	// Fallback to net.Dial if no WithConnnection is given
+	if wcOpts.conn == nil {
+		var err error
+		wcOpts.conn, err = net.Dial(network, address)
+		if err != nil {
+			return nil, errtrace.Wrap(err)
+		}
+	}
 
 	c := &conn{
-		Conn: netConn,
+		Conn: wcOpts.conn,
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
 		},
-		timeoutReader: &timeoutReader{reader: netConn},
+		timeoutReader: &timeoutReader{reader: wcOpts.conn},
 
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
@@ -100,6 +110,8 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	}
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
+
+	sendRecvCtx, cancel := context.WithCancelCause(ctx)
 
 	go c.sendLoop(sendRecvCtx, cancel)
 	go c.receiveLoop(sendRecvCtx, cancel)
