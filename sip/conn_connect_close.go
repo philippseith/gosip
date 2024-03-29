@@ -30,19 +30,19 @@ func (c *conn) connect(ctx context.Context) error {
 			c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
 			// Eventually start the KeepAlive loop
 			if c.sendKeepAlive {
-				go c.sendKeepAliveLoop()
+				go c.sendKeepAliveLoop(ctx)
 			}
 		}()
 		return nil
 	}
 }
 
-func (c *conn) sendKeepAliveLoop() {
+func (c *conn) sendKeepAliveLoop(ctx context.Context) {
 	loopTime := c.LeaseTimeout() - 100*time.Millisecond
 	<-time.After(loopTime)
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
-	err := c.Ping(ctx)
+	ctxDl, cancel := context.WithDeadline(ctx, time.Now().Add(loopTime))
+	err := c.Ping(ctxDl)
 	cancel()
 	if err != nil {
 		logger.Printf("sendKeepAlive: %v", err)
@@ -53,8 +53,8 @@ func (c *conn) sendKeepAliveLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(loopTime))
-		err := c.Ping(ctx)
+		ctxDl, cancel := context.WithDeadline(ctx, time.Now().Add(loopTime))
+		err := c.Ping(ctxDl)
 		cancel()
 		if err != nil {
 			logger.Printf("sendKeepAlive: %v", err)
