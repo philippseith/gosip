@@ -80,13 +80,13 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 			return nil, errtrace.Wrap(err)
 		}
 	}
-	// Fallback to net.Dial if no WithConnnection is given
+	// Fallback to net.Dial
 	if wcOpts.dial == nil {
-		wcOpts.dial = func() (io.ReadWriteCloser, error) {
+		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
 			return net.Dial(network, address)
 		}
 	}
-	netConn, err := wcOpts.dial()
+	netConn, err := wcOpts.dial(network, address)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}

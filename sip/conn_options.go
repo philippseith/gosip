@@ -12,7 +12,7 @@ import (
 type ConnOption func(c *connOptions) error
 
 type connOptions struct {
-	dial                         func() (io.ReadWriteCloser, error)
+	dial                         func(string, string) (io.ReadWriteCloser, error)
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -25,6 +25,7 @@ func WithBusyTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
+			return nil
 		}
 		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
@@ -35,6 +36,7 @@ func WithLeaseTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
+			return nil
 		}
 		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
@@ -71,10 +73,10 @@ func WithMeasureNetworkLatencyICMP() ConnOption {
 	return func(c *connOptions) error { return nil } // nolint:revive
 }
 
-// WithConnection surpasses the net.Conn from the Dial function.
+// WithDial surpasses the net.Conn from the Dial function.
 // This option can be used for testing, logging, middleware purposes in general,
 // or exotic connection types.
-func WithConnnection(dial func() (io.ReadWriteCloser, error)) ConnOption {
+func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption {
 	return func(c *connOptions) error {
 		c.dial = dial
 		return nil
