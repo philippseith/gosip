@@ -72,6 +72,7 @@ type ConnProperties interface {
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	return dial(context.Background(), network, address, options...)
 }
+
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
 	// Check for WithConnnection option
 	wcOpts := &connOptions{}

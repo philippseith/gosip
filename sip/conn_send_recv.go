@@ -134,43 +134,50 @@ func (c *conn) receiveAndDispatch() error {
 	c.mxRecv.Lock()
 	defer c.mxRecv.Unlock()
 
-	h := &Header{}
-	err := h.Read(c.timeoutReader)
-	if err != nil {
-		return errtrace.Wrap(err)
-	}
-	if h.MessageType == 0 { // TODO When does this happen?
-		return nil
-	}
-	// The header was read, this is the first point in time we can be sure the server has sent something
-	c.setLastReceived()
 	// The respFunc is executed on the receiving goroutine
 	var respFunc func(PDU) error
 	// prepare waiting for the respFunc to end
 	respFuncExecuted := make(chan struct{})
-	switch h.MessageType {
-	case BusyResponseMsgType:
-		// Busy PDU is empty, do nothing
-		return nil
-	case ExceptionMsgType:
-		respFunc, err = c.newExceptionResponse(respFuncExecuted)
+
+	h := &Header{}
+
+readUntilValidResponse:
+	for {
+		err := h.Read(c.timeoutReader)
 		if err != nil {
 			return errtrace.Wrap(err)
 		}
-	default:
-		respFunc = func(pdu PDU) error {
-			defer close(respFuncExecuted)
-
-			if h.MessageType != pdu.MessageType() {
-				return errtrace.Wrap(fmt.Errorf(
-					"%w. Type %d, Expected: %d, TransactionId: %d",
-					ErrorInvalidResponseMessageType,
-					h.MessageType, pdu.MessageType(), h.TransactionID))
+		// The header was read, this is the first point in time we can be sure the server has sent something
+		c.setLastReceived()
+		// Read the header and decide what to do next
+		switch h.MessageType {
+		case 0:
+			return nil // TODO When does this happen?
+		case BusyResponseMsgType:
+			// Busy PDU is empty, do nothing and wait for the real response
+			continue
+		case ExceptionMsgType:
+			respFunc, err = c.newExceptionResponse(respFuncExecuted)
+			if err != nil {
+				return errtrace.Wrap(err)
 			}
-			// log.Printf("receiving %v, id: %v", pdu.MessageType(), h.TransactionID)
-			err = pdu.Read(c.timeoutReader)
-			// log.Printf("received %v, id: %v, err: %v", pdu.MessageType(), h.TransactionID, err)
-			return errtrace.Wrap(err)
+			break readUntilValidResponse
+		default:
+			respFunc = func(pdu PDU) error {
+				defer close(respFuncExecuted)
+
+				if h.MessageType != pdu.MessageType() {
+					return errtrace.Wrap(fmt.Errorf(
+						"%w. Type %d, Expected: %d, TransactionId: %d",
+						ErrorInvalidResponseMessageType,
+						h.MessageType, pdu.MessageType(), h.TransactionID))
+				}
+				// log.Printf("receiving %v, id: %v", pdu.MessageType(), h.TransactionID)
+				err = pdu.Read(c.timeoutReader)
+				// log.Printf("received %v, id: %v, err: %v", pdu.MessageType(), h.TransactionID, err)
+				return errtrace.Wrap(err)
+			}
+			break readUntilValidResponse
 		}
 	}
 	// Get the response channel of the request for this transactionID and send the respFunc to it

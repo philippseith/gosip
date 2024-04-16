@@ -2,6 +2,7 @@ package sip
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"net"
 	"testing"
@@ -9,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestUDP(t *testing.T) {
+func _TestUDP(t *testing.T) {
 	pc, err := net.ListenPacket("udp4", "192.168.2.81:35021")
 
 	assert.NoError(t, err)
@@ -45,4 +46,14 @@ func TestDecode(t *testing.T) {
 	br := BrowseRequest{}
 	br.Read(reader)
 	log.Print(br)
+}
+
+func _TestP1354(t *testing.T) {
+	conn, err := Dial("tcp", "192.168.112.15:35021", WithBusyTimeout(5000))
+	assert.NoError(t, err)
+
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 0x8000+1354)
+	assert.NoError(t, err)
+
+	err = conn.WriteData(context.Background(), 0, 0, 0x8000+1354, resp.Data)
 }
