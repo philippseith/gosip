@@ -104,9 +104,18 @@ func WithContext(ctx context.Context) RequestOption {
 	}
 }
 
+// WithTimeout allows to cancel a request with a timeout.
+func WithTimeout(timeout time.Duration) RequestOption {
+	return func(r *requestOptions) error {
+		r.timeout = timeout
+		return nil
+	}
+}
+
 type requestOptions struct {
 	retries uint
 	ctx     context.Context
+	timeout time.Duration
 }
 
 func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
@@ -117,6 +126,16 @@ func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
 		if err := option(r); err != nil {
 			return r, errtrace.Wrap(err)
 		}
+	}
+	if r.timeout > 0 {
+		var cancel context.CancelFunc
+		r.ctx, cancel = context.WithTimeout(r.ctx, r.timeout)
+		// Trick to prevent message about context leak (which will not happen!)
+		go func() {
+			<-r.ctx.Done()
+			cancel()
+		}()
+
 	}
 	return r, nil
 }
