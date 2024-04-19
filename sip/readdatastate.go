@@ -6,11 +6,7 @@ import (
 	"io"
 )
 
-type ReadDataStateRequest struct {
-	SlaveIndex     uint16
-	SlaveExtension uint16
-	IDN            uint32
-}
+type ReadDataStateRequest Request
 
 func (r *ReadDataStateRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
 	r.SlaveIndex = uint16(slaveIndex)

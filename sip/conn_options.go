@@ -2,6 +2,7 @@ package sip
 
 import (
 	"fmt"
+	"io"
 
 	"braces.dev/errtrace"
 	"github.com/cenkalti/backoff/v4"
@@ -11,6 +12,7 @@ import (
 type ConnOption func(c *connOptions) error
 
 type connOptions struct {
+	dial                         func(string, string) (io.ReadWriteCloser, error)
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -23,6 +25,7 @@ func WithBusyTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userBusyTimeout = uint32(timeout)
+			return nil
 		}
 		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
@@ -33,6 +36,7 @@ func WithLeaseTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
 		if timeout > 0 {
 			c.userLeaseTimeout = uint32(timeout)
+			return nil
 		}
 		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
@@ -52,7 +56,7 @@ func WithConcurrentTransactionLimit(ct uint) ConnOption {
 
 // WithSendKeepAlive configures the connection that it is sending Ping requests
 // shortly before the LeaseTimeout ends.
-func WithSendKeepAlive() func(c *connOptions) error {
+func WithSendKeepAlive() ConnOption {
 	return func(c *connOptions) error {
 		c.sendKeepAlive = true
 		return nil
@@ -66,5 +70,15 @@ func WithSendKeepAlive() func(c *connOptions) error {
 // https://github.com/prometheus-community/#supported-operating-systems
 func WithMeasureNetworkLatencyICMP() ConnOption {
 	// TODO
-	return func(c *connOptions) error { return nil }
+	return func(c *connOptions) error { return nil } // nolint:revive
+}
+
+// WithDial surpasses the net.Conn from the Dial function.
+// This option can be used for testing, logging, middleware purposes in general,
+// or exotic connection types.
+func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption {
+	return func(c *connOptions) error {
+		c.dial = dial
+		return nil
+	}
 }

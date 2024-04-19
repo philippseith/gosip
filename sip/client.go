@@ -23,24 +23,30 @@ import (
 // Close closes the currently open connection, if there is anyone yet.
 type Client interface {
 	ConnProperties
+	SyncClient
 
-	Ping(options ...RequestOption) error
 	GoPing(options ...RequestOption) <-chan error
-
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
 
 	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse]
 	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse]
 	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse]
 	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse]
 
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
 	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
 
 	Close() error
+	Closed() bool
+}
+
+type SyncClient interface {
+	Ping(options ...RequestOption) error
+
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
+
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can
@@ -98,9 +104,18 @@ func WithContext(ctx context.Context) RequestOption {
 	}
 }
 
+// WithTimeout allows to cancel a request with a timeout.
+func WithTimeout(timeout time.Duration) RequestOption {
+	return func(r *requestOptions) error {
+		r.timeout = timeout
+		return nil
+	}
+}
+
 type requestOptions struct {
 	retries uint
 	ctx     context.Context
+	timeout time.Duration
 }
 
 func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
@@ -111,6 +126,16 @@ func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
 		if err := option(r); err != nil {
 			return r, errtrace.Wrap(err)
 		}
+	}
+	if r.timeout > 0 {
+		var cancel context.CancelFunc
+		r.ctx, cancel = context.WithTimeout(r.ctx, r.timeout)
+		// Trick to prevent message about context leak (which will not happen!)
+		go func() {
+			<-r.ctx.Done()
+			cancel()
+		}()
+
 	}
 	return r, nil
 }
@@ -139,6 +164,14 @@ func (c *client) Connected() bool {
 	conn := c.Conn()
 	if conn != nil {
 		return conn.Connected()
+	}
+	return false
+}
+
+func (c *client) Closed() bool {
+	conn := c.Conn()
+	if conn != nil {
+		return conn.Closed()
 	}
 	return false
 }
@@ -329,6 +362,10 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	ch := make(chan Result[Conn])
 	go dialWithBackOff(ctx, ch, c.network, c.address, c.backOff, c.options...)
 
+	return c.waitForDialWithBackoff(ctx, ch)
+}
+
+func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Conn]) error {
 	// Either the context timed out or the go func returned
 	select {
 	case <-ctx.Done():
@@ -336,6 +373,11 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	case result := <-ch:
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
+		}
+		if errors.Is(result.Err, ErrorRetriesExceeded) {
+			// When the backoff has been exhausted, the connection has to be closed
+			c.Close()
+			return result.Err
 		}
 		if result.Err != nil {
 			return result.Err

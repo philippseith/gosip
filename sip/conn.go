@@ -2,6 +2,7 @@ package sip
 
 import (
 	"context"
+	"io"
 	"net"
 	"time"
 
@@ -30,6 +31,7 @@ type Conn interface {
 	WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error
 
 	Close() error
+	Closed() bool
 }
 
 // ConnProperties describes the properties of a Conn.
@@ -68,11 +70,27 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	netConn, err := net.Dial(network, address)
+	return dial(context.Background(), network, address, options...)
+}
+
+func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
+	// Check for WithConnnection option
+	wcOpts := &connOptions{}
+	for _, option := range options {
+		if err := option(wcOpts); err != nil {
+			return nil, errtrace.Wrap(err)
+		}
+	}
+	// Fallback to net.Dial
+	if wcOpts.dial == nil {
+		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
+			return net.Dial(network, address)
+		}
+	}
+	netConn, err := wcOpts.dial(network, address)
 	if err != nil {
 		return nil, errtrace.Wrap(err)
 	}
-	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
 
 	c := &conn{
 		Conn: netConn,
@@ -97,21 +115,39 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
+	sendRecvCtx, cancel := context.WithCancelCause(ctx)
+
 	go c.sendLoop(sendRecvCtx, cancel)
 	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
 		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
+		c.setClosed()
 	}()
 
-	return c, errtrace.Wrap(c.connect())
+	return c, errtrace.Wrap(c.connect(ctx))
 }
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
 		c.cancel(ErrorClosed)
 	}
+	c.setClosed()
 	return errtrace.Wrap(c.cleanUp())
+}
+
+func (c *conn) setClosed() {
+	c.mxState.Lock()
+	defer c.mxState.Unlock()
+
+	c.closed = true
+}
+
+func (c *conn) Closed() bool {
+	c.mxState.RLock()
+	defer c.mxState.RUnlock()
+
+	return c.closed
 }
 
 func (c *conn) Connected() bool {
@@ -183,10 +219,12 @@ func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
 	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
-			IDN:            idn,
-			DataLength:     uint32(len(data)),
+			Request: Request{
+				SlaveIndex:     uint16(slaveIndex),
+				SlaveExtension: uint16(slaveExtension),
+				IDN:            idn,
+			},
+			DataLength: uint32(len(data)),
 		},
 		Data: data,
 	}, &WriteDataResponse{}))

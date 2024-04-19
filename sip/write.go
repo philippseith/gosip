@@ -11,10 +11,8 @@ type WriteDataRequest struct {
 	Data []byte
 }
 type writeDataRequest struct {
-	SlaveIndex     uint16
-	SlaveExtension uint16
-	IDN            uint32
-	DataLength     uint32
+	Request
+	DataLength uint32
 }
 
 func (w *WriteDataRequest) Read(reader io.Reader) error {

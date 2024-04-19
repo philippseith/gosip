@@ -1,10 +1,11 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"io"
 	"sync"
 	"time"
+
+	"braces.dev/errtrace"
 )
 
 type timeoutReader struct {
@@ -24,6 +25,7 @@ func (t *timeoutReader) Read(p []byte) (n int, err error) {
 	go func() {
 		r := readResult{p: make([]byte, len(p))}
 		r.n, r.err = t.reader.Read(r.p)
+		r.p = r.p[:r.n]
 		read <- r
 	}()
 	select {

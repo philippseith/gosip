@@ -16,6 +16,7 @@ var Error = errors.New("S/IP")
 
 var ErrorTimeout = fmt.Errorf("%w: Timeout", Error)
 var ErrorClosed = fmt.Errorf("%w: Connection closed", Error)
+var ErrorInvalidRequestMessageType = fmt.Errorf("%w: Invalid request message type", Error)
 var ErrorInvalidResponseMessageType = fmt.Errorf("%w: Invalid response message type", Error)
 var ErrorRetriesExceeded = fmt.Errorf("%w: Reconnect timeout exceeded", Error)
 
@@ -24,6 +25,13 @@ type PDU interface {
 	Read(io.Reader) error
 	Write(io.Writer) error
 	MessageType() MessageType
+}
+
+// Request is the address part of a PDU
+type Request struct {
+	SlaveIndex     uint16
+	SlaveExtension uint16
+	IDN            uint32
 }
 
 var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
