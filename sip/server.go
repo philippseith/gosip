@@ -9,6 +9,7 @@ import (
 	"braces.dev/errtrace"
 )
 
+// Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
 func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
 	server := &connServer{
 		connOptions: connOptions{
