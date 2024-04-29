@@ -286,6 +286,7 @@ func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []
 }
 
 func (c *client) Close() error {
+	log.Printf("SIP: %s: Close", c.address)
 	if conn := c.Conn(); conn != nil {
 		return errtrace.Wrap(conn.Close())
 	}
@@ -348,6 +349,13 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+
+	cc := c.Conn()
+	if cc != nil {
+		log.Printf("SIP: %s: tryConnect: connected: %v", c.address, cc.Connected())
+	} else {
+		log.Printf("SIP: %s: tryConnect: conn nil", c.address)
 	}
 
 	if conn := c.Conn(); conn != nil &&
