@@ -337,9 +337,6 @@ func parseTryConnectDo[T any](c *client,
 			if err == nil {
 				return t, nil
 			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				errs = append(errs, ErrorTimeout)
-			}
 			errs = append(errs, err)
 		}
 	}
@@ -347,7 +344,7 @@ func parseTryConnectDo[T any](c *client,
 		log.Printf("SIP: %s: do %v", c.address, errs)
 	}
 	err = errors.Join(errs...)
-	if errors.Is(err, ErrorTimeout) {
+	if errors.Is(err, ErrorTimeout) || errors.Is(err, context.DeadlineExceeded) {
 		c.Close()
 	}
 	return *new(T), errtrace.Wrap(err)
