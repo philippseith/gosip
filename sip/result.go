@@ -5,6 +5,10 @@ type Result[T any] struct {
 	Err error
 }
 
+func NewResult[T any](ok T, err error) Result[T] {
+	return Result[T]{Ok: ok, Err: err}
+}
+
 func Ok[T any](t T) Result[T] {
 	return Result[T]{Ok: t}
 }
