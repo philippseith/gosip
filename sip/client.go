@@ -362,7 +362,7 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	}
 
 	cc := c.Conn()
-	if cc != nil {
+	if cc != nil && !cc.Connected() {
 		log.Printf("SIP: %s: tryConnect: connected: %v", c.address, cc.Connected())
 	} else {
 		log.Printf("SIP: %s: tryConnect: conn nil", c.address)
