@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -286,7 +285,7 @@ func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []
 }
 
 func (c *client) Close() error {
-	log.Printf("SIP: %s: Close", c.address)
+	logger.Printf("%s: Close", c.address)
 	if conn := c.Conn(); conn != nil {
 		return errtrace.Wrap(conn.Close())
 	}
@@ -341,7 +340,7 @@ func parseTryConnectDo[T any](c *client,
 		}
 	}
 	if errs != nil {
-		log.Printf("SIP: %s: do %v", c.address, errs)
+		logger.Printf("%s: do %v", c.address, errs)
 	}
 	err = errors.Join(errs...)
 	if errors.Is(err, ErrorTimeout) || errors.Is(err, context.DeadlineExceeded) {
@@ -360,9 +359,9 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 
 	cc := c.Conn()
 	if cc != nil && !cc.Connected() {
-		log.Printf("SIP: %s: tryConnect: connected: %v", c.address, cc.Connected())
+		logger.Printf("%s: tryConnect: connected: %v", c.address, cc.Connected())
 	} else {
-		log.Printf("SIP: %s: tryConnect: conn nil", c.address)
+		logger.Printf("%s: tryConnect: conn nil", c.address)
 	}
 
 	if conn := c.Conn(); conn != nil &&
@@ -385,10 +384,10 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 	// Either the context timed out or the go func returned
 	select {
 	case <-ctx.Done():
-		log.Printf("SIP: %s: waitForDial = %v", c.address, ErrorTimeout)
+		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
 		return ErrorTimeout
 	case result := <-ch:
-		log.Printf("SIP: %s: waitForDial = %v", c.address, result)
+		logger.Printf("%s: waitForDial = %v", c.address, result)
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
 		}
@@ -419,7 +418,7 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 	var spanSum time.Duration
 	// Try to connect until the
 	for {
-		log.Printf("SIP: %s: dial", address)
+		logger.Printf("%s: dial", address)
 		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
 		// nolint:contextcheck
 		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
@@ -429,7 +428,7 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		}
 
 		backoffSpan := clientBackOff.NextBackOff()
-		log.Printf("SIP: %s: backoff = %v", address, backoffSpan)
+		logger.Printf("%s: backoff = %v", address, backoffSpan)
 
 		if backoffSpan == backoff.Stop {
 			ch <- Err[Conn](errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)))

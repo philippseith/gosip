@@ -98,6 +98,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
 		},
+		address:       address,
 		timeoutReader: &timeoutReader{reader: netConn},
 
 		reqCh:                make(chan request),

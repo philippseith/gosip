@@ -65,7 +65,7 @@ func (c connServer) serve(ctx context.Context) {
 				return
 			}
 			if err := c.handleMessages(); err != nil {
-				logger.Println(err)
+				logger.Printf("%v: %v", c.conn.RemoteAddr(), err)
 				return
 			}
 		}
