@@ -336,6 +336,12 @@ func parseTryConnectDo[T any](c *client,
 			if err == nil {
 				return t, nil
 			}
+			if errors.Is(err, ErrorTimeout) {
+				err = fmt.Errorf("%w: %v", err, requestSettings.timeout)
+			}
+			if err.Error() == "context deadline exceeded" {
+				logger.Printf("%T: do %#v", err, err)
+			}
 			errs = append(errs, err)
 		}
 	}
