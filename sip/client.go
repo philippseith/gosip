@@ -360,7 +360,7 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	cc := c.Conn()
 	if cc != nil && !cc.Connected() {
 		logger.Printf("%s: tryConnect: connected: %v", c.address, cc.Connected())
-	} else {
+	} else if cc == nil {
 		logger.Printf("%s: tryConnect: conn nil", c.address)
 	}
 
