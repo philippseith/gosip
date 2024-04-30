@@ -331,9 +331,7 @@ func parseTryConnectDo[T any](c *client,
 		err := c.tryConnect(requestSettings.ctx)
 		if err != nil {
 			logger.Printf("tc: %+v", err)
-			if errors.Is(err, ErrorTimeout) {
-				err = fmt.Errorf("%w: %v", err, requestSettings.timeout)
-			}
+			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		} else {
 			t, err := do(requestSettings.ctx)
@@ -341,9 +339,7 @@ func parseTryConnectDo[T any](c *client,
 				return t, nil
 			}
 			logger.Printf("do: %+v", err)
-			if errors.Is(err, ErrorTimeout) {
-				err = fmt.Errorf("%w: %v", err, requestSettings.timeout)
-			}
+			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		}
 	}
@@ -355,6 +351,16 @@ func parseTryConnectDo[T any](c *client,
 		c.Close()
 	}
 	return *new(T), errtrace.Wrap(err)
+}
+
+func extendTimeoutError(err error, timeout time.Duration) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errors.Join(fmt.Errorf("%w: %v", err, timeout), err)
+	}
+	if errors.Is(err, ErrorTimeout) {
+		return fmt.Errorf("%w: %v", err, timeout)
+	}
+	return err
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
