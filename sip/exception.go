@@ -43,7 +43,7 @@ func (c Exception) Error() string {
 	case PduProtocolMismatchError:
 		commonError = "PduProtocolMismatchError"
 	}
-	return fmt.Sprintf("%s: CommonErrorCode: %s, SpecificErrorCode: %d", Error, commonError, c.SpecificErrorCode)
+	return fmt.Sprintf("%s: CommonErrorCode: %s, SpecificErrorCode: 0x%04x", Error, commonError, c.SpecificErrorCode)
 }
 
 func (c Exception) Unwrap() error {

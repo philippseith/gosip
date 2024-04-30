@@ -235,7 +235,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {
 	if err != nil {
-		return fmt.Errorf("%w %v %v %v", err, slaveIndex, slaveExtension, idn)
+		return fmt.Errorf("%w %v %v %v", err, slaveIndex, slaveExtension, Idn(idn))
 	}
 	return err
 }
