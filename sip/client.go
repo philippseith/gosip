@@ -330,7 +330,6 @@ func parseTryConnectDo[T any](c *client,
 
 		err := c.tryConnect(requestSettings.ctx)
 		if err != nil {
-			logger.Printf("tc: %+v", err)
 			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		} else {
@@ -338,7 +337,6 @@ func parseTryConnectDo[T any](c *client,
 			if err == nil {
 				return t, nil
 			}
-			logger.Printf("do: %+v", err)
 			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		}
