@@ -285,6 +285,7 @@ func (c *client) GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []
 }
 
 func (c *client) Close() error {
+	logger.Printf("%s: Close", c.address)
 	if conn := c.Conn(); conn != nil {
 		return errtrace.Wrap(conn.Close())
 	}
@@ -329,16 +330,35 @@ func parseTryConnectDo[T any](c *client,
 
 		err := c.tryConnect(requestSettings.ctx)
 		if err != nil {
+			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		} else {
 			t, err := do(requestSettings.ctx)
 			if err == nil {
 				return t, nil
 			}
+			err = extendTimeoutError(err, requestSettings.timeout)
 			errs = append(errs, err)
 		}
 	}
-	return *new(T), errtrace.Wrap(errors.Join(errs...))
+	if errs != nil {
+		logger.Printf("%s: do %v", c.address, errs)
+	}
+	err = errors.Join(errs...)
+	if errors.Is(err, ErrorTimeout) || errors.Is(err, context.DeadlineExceeded) {
+		c.Close()
+	}
+	return *new(T), errtrace.Wrap(err)
+}
+
+func extendTimeoutError(err error, timeout time.Duration) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errors.Join(fmt.Errorf("%w: %v", err, timeout), err)
+	}
+	if errors.Is(err, ErrorTimeout) {
+		return fmt.Errorf("%w: %v", err, timeout)
+	}
+	return err
 }
 
 func (c *client) tryConnect(ctx context.Context) (err error) {
@@ -347,6 +367,13 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+
+	cc := c.Conn()
+	if cc != nil && !cc.Connected() {
+		logger.Printf("%s: tryConnect: connected: %v", c.address, cc.Connected())
+	} else if cc == nil {
+		logger.Printf("%s: tryConnect: conn nil", c.address)
 	}
 
 	if conn := c.Conn(); conn != nil &&
@@ -369,8 +396,10 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 	// Either the context timed out or the go func returned
 	select {
 	case <-ctx.Done():
+		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
 		return ErrorTimeout
 	case result := <-ch:
+		logger.Printf("%s: waitForDial = %v", c.address, result)
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
 		}
@@ -401,6 +430,7 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 	var spanSum time.Duration
 	// Try to connect until the
 	for {
+		logger.Printf("%s: dial", address)
 		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
 		// nolint:contextcheck
 		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
@@ -410,6 +440,7 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		}
 
 		backoffSpan := clientBackOff.NextBackOff()
+		logger.Printf("%s: backoff = %v", address, backoffSpan)
 
 		if backoffSpan == backoff.Stop {
 			ch <- Err[Conn](errtrace.Wrap(errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err)))

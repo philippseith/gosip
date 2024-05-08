@@ -10,6 +10,7 @@ import (
 type conn struct {
 	Conn io.ReadWriteCloser
 	connOptions
+	address       string
 	timeoutReader *timeoutReader
 	mxRecv        sync.Mutex
 
