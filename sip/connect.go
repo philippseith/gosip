@@ -1,9 +1,10 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
+
+	"braces.dev/errtrace"
 )
 
 // ConnectRequest MessageType 63

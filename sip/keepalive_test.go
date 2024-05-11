@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestNoKeepAlive(t *testing.T) {

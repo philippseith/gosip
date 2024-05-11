@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestSmoke(t *testing.T) {

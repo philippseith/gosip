@@ -5,8 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestConnect(t *testing.T) {

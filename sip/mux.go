@@ -6,9 +6,10 @@ import (
 	"sync"
 )
 
-// Mux creates a multiplexer which listens on the given listener and forwards the S/IP requests to the target.
-// Reads are optimized by reading only once and broadcasting the response to all listeners.
-// Mux is useful when the source has limited resources and can't handle a larger number of multiple connections.
+// Mux creates a multiplexer which listens on the given listener and forwards
+// the S/IP requests to the target. Reads are optimized by reading only once and
+// broadcasting the response to all listeners. Mux is useful when the source has
+// limited resources and can't handle a larger number of multiple connections.
 func Mux(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
 	return Serve(ctx, listener, &mux{source: source}, options...)
 }

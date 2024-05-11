@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"braces.dev/errtrace"
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestReadEverything(t *testing.T) {
