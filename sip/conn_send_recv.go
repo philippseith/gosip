@@ -42,7 +42,7 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 			}
 		}
 	}()
-	logger.Printf("breaking sendLoop: %v", err)
+	logger.Printf("%s: breaking sendLoop: %v", c.address, err)
 }
 
 // receiveLoop receives responses from the server and dispatches them to . Before
@@ -73,7 +73,7 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 			}
 		}
 	}()
-	logger.Printf("breaking receiveLoop: %v", err)
+	logger.Printf("%s: breaking receiveLoop: %v", c.address, err)
 }
 
 // dequeueRequest fetches a request from the request queue.

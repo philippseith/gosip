@@ -45,7 +45,7 @@ func (c *conn) sendKeepAliveLoop(ctx context.Context) {
 	err := c.Ping(ctxDl)
 	cancel()
 	if err != nil {
-		logger.Printf("sendKeepAlive: %v", err)
+		logger.Printf("%v: sendKeepAlive: %v", c.address, err)
 		return
 	}
 
@@ -57,7 +57,7 @@ func (c *conn) sendKeepAliveLoop(ctx context.Context) {
 		err := c.Ping(ctxDl)
 		cancel()
 		if err != nil {
-			logger.Printf("sendKeepAlive: %v", err)
+			logger.Printf("%v: sendKeepAlive: %v", c.address, err)
 			break
 		}
 	}
