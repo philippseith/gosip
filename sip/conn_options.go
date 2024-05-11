@@ -18,6 +18,7 @@ type connOptions struct {
 	concurrentTransactionLimitCh chan struct{}
 	sendKeepAlive                bool
 	backoffFactory               func() backoff.BackOff
+	writerFactory                func(io.Writer) io.Writer
 }
 
 // WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
@@ -79,6 +80,15 @@ func WithMeasureNetworkLatencyICMP() ConnOption {
 func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption {
 	return func(c *connOptions) error {
 		c.dial = dial
+		return nil
+	}
+}
+
+// WithWriter allows to control the way requests are sent to the net.Conn.
+// This can be useful to group request and/or send them at defined points in time.
+func WithWriter(writerFactory func(io.Writer) io.Writer) ConnOption {
+	return func(c *connOptions) error {
+		c.writerFactory = writerFactory
 		return nil
 	}
 }
