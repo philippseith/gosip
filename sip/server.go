@@ -9,8 +9,18 @@ import (
 	"braces.dev/errtrace"
 )
 
+type Services interface {
+	Ping() error
+
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error
+}
+
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
-func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
+func Serve(ctx context.Context, listener net.Listener, source Services, options ...ConnOption) error {
 	server := &connServer{
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
@@ -33,7 +43,9 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 			default:
 				conn, err := listener.Accept()
 				if ctx.Err() != nil {
-					conn.Close()
+					if conn != nil {
+						conn.Close()
+					}
 					return
 				}
 				if err != nil {
@@ -50,7 +62,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 type connServer struct {
 	connOptions
 	conn   net.Conn
-	source SyncClient
+	source Services
 }
 
 func (c connServer) serve(ctx context.Context) {

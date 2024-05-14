@@ -10,12 +10,20 @@ import (
 // the S/IP requests to the target. Reads are optimized by reading only once and
 // broadcasting the response to all listeners. Mux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
-func Mux(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
-	return Serve(ctx, listener, &mux{source: source}, options...)
+func Mux(ctx context.Context, listener net.Listener, source Services, options ...ConnOption) error {
+	return Serve(ctx, listener, NewMuxServices(source), options...)
+}
+
+// NewMuxServices creates a new multiplexer which forwards the requests to the source.
+func NewMuxServices(source Services) Services {
+	return &mux{
+		source: source,
+		jobs:   make(map[muxJob][]chan Result[any]),
+	}
 }
 
 type mux struct {
-	source SyncClient
+	source Services
 	jobs   map[muxJob][]chan Result[any]
 	mx     sync.Mutex
 }
@@ -25,16 +33,16 @@ type muxJob struct {
 	MessageType MessageType
 }
 
-func (m *mux) Ping(options ...RequestOption) error {
+func (m *mux) Ping() error {
 	result := <-m.enqueue(muxJob{
 		MessageType: PingRequestMsgType,
 	}, func() (any, error) {
-		return nil, m.source.Ping(options...)
+		return nil, m.source.Ping()
 	})
 	return result.Err
 }
 
-func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error) {
+func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadEverythingRequestMsgType,
 		Request: Request{
@@ -43,12 +51,12 @@ func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options
 			IDN:            idn,
 		},
 	}, func() (any, error) {
-		return m.source.ReadEverything(slaveIndex, slaveExtension, idn, options...)
+		return m.source.ReadEverything(slaveIndex, slaveExtension, idn)
 	})
 	return result.Ok.(ReadEverythingResponse), result.Err
 }
 
-func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error) {
+func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadOnlyDataRequestMsgType,
 		Request: Request{
@@ -57,12 +65,12 @@ func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options .
 			IDN:            idn,
 		},
 	}, func() (any, error) {
-		return m.source.ReadOnlyData(slaveIndex, slaveExtension, idn, options...)
+		return m.source.ReadOnlyData(slaveIndex, slaveExtension, idn)
 	})
 	return result.Ok.(ReadOnlyDataResponse), result.Err
 }
 
-func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error) {
+func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadDescriptionRequestMsgType,
 		Request: Request{
@@ -71,12 +79,12 @@ func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32, option
 			IDN:            idn,
 		},
 	}, func() (any, error) {
-		return m.source.ReadDescription(slaveIndex, slaveExtension, idn, options...)
+		return m.source.ReadDescription(slaveIndex, slaveExtension, idn)
 	})
 	return result.Ok.(ReadDescriptionResponse), result.Err
 }
 
-func (m *mux) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error) {
+func (m *mux) ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadDataStateRequestMsgType,
 		Request: Request{
@@ -85,13 +93,13 @@ func (m *mux) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options 
 			IDN:            idn,
 		},
 	}, func() (any, error) {
-		return m.source.ReadDataState(slaveIndex, slaveExtension, idn, options...)
+		return m.source.ReadDataState(slaveIndex, slaveExtension, idn)
 	})
 	return result.Ok.(ReadDataStateResponse), result.Err
 }
 
-func (m *mux) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error {
-	return m.source.WriteData(slaveIndex, slaveExtension, idn, data, options...)
+func (m *mux) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	return m.source.WriteData(slaveIndex, slaveExtension, idn, data)
 }
 
 func (m *mux) enqueue(job muxJob, do func() (any, error)) <-chan Result[any] {

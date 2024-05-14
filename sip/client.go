@@ -23,7 +23,15 @@ import (
 // Close closes the currently open connection, if there is anyone yet.
 type Client interface {
 	ConnProperties
-	SyncClient
+	
+	Ping(options ...RequestOption) error
+
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
+
+	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
 
 	GoPing(options ...RequestOption) <-chan error
 
@@ -38,15 +46,14 @@ type Client interface {
 	Closed() bool
 }
 
+// SyncClient is the interface for the synchronous client methods.
 type SyncClient interface {
-	Ping(options ...RequestOption) error
+	Ping() error
 
-	ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error)
-	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error)
-	ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error)
-	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
-
-	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
+	ReadEverything(slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error)
+	ReadOnlyData(slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error)
+	ReadDescription(slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error)
+	ReadDataState(slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error)
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can
