@@ -42,3 +42,14 @@ func init() {
 	// Hack to allow better display of wrapped errors in the debugger
 	_ = errtrace.FormatString(errors.ErrUnsupported)
 }
+
+// Constants for the validElements field in ReadDescriptionResponse and ReadEverythingResponse
+const (
+	ElmDataState uint16 = 0x0001
+	ElmName      uint16 = 0x0002
+	ElmAttribute uint16 = 0x0004
+	ElmUnit      uint16 = 0x0008
+	ElmMin       uint16 = 0x0010
+	ElmMax       uint16 = 0x0020
+	ElmData      uint16 = 0x0040
+)
