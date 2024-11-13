@@ -69,7 +69,7 @@ func BroadcastBrowseRequest(conn net.PacketConn) error {
 // SendBrowseRequest sends a BrowseRequest on the passed net.PacketConn to a dedicated IP address.
 func SendBrowseRequest(conn net.PacketConn, address string) error {
 	if net.ParseIP(address) == nil {
-		return fmt.Errorf("%w: %s is not a valid IP address", Error, address)
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: %s is not a valid IP address", Error, address))
 	}
 	return sendBrowseRequest(conn, address)
 }
@@ -77,7 +77,7 @@ func SendBrowseRequest(conn net.PacketConn, address string) error {
 func sendBrowseRequest(conn net.PacketConn, address string) error {
 	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return errorx.Wrap(fmt.Errorf("%w: can not convert to net.UDPAddr: %s", Error, conn.LocalAddr().String()))
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: can not convert to net.UDPAddr: %s", Error, conn.LocalAddr().String()))
 	}
 	req := &BrowseRequest{
 		IPAddress:          [4]byte(udpAddr.IP.To4()),
@@ -93,20 +93,20 @@ func sendBrowseRequest(conn net.PacketConn, address string) error {
 func Browse(ctx context.Context, interfaceName string) (<-chan Result[*BrowseResponse], error) {
 	conns, ch, err := ListenToBrowseResponses(ctx, interfaceName)
 	if err != nil {
-		return nil, errorx.Wrap(err)
+		return nil, err
 	}
 
 	var allErr error
 	for _, conn := range conns {
 		allErr = errors.Join(allErr, BroadcastBrowseRequest(conn))
 	}
-	return ch, errorx.Wrap(allErr)
+	return ch, allErr
 }
 
 func connsForInterface(interfaceName string) ([]net.PacketConn, error) {
 	ips, err := findIPV4OfInterface(interfaceName)
 	if err != nil {
-		return nil, errorx.Wrap(err)
+		return nil, err
 	}
 
 	var allErr error
@@ -121,13 +121,13 @@ func connsForInterface(interfaceName string) ([]net.PacketConn, error) {
 
 		conns = append(conns, conn)
 	}
-	return errorx.Wrap2(conns, allErr)
+	return conns, allErr
 }
 
 func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 	ifcs, err := net.Interfaces()
 	if err != nil {
-		return nil, errorx.Wrap(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
+		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
 	}
 	var ipV4s []net.IP
 	for _, ifc := range ifcs {
@@ -136,7 +136,7 @@ func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 		}
 		addrs, err := ifc.Addrs()
 		if err != nil {
-			return nil, errorx.Wrap(fmt.Errorf("%w: Can not read addresses of interface %s: %w", Error, interfaceName, err))
+			return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read addresses of interface %s: %w", Error, interfaceName, err))
 		}
 		for _, addr := range addrs {
 			ipAddr, ok := addr.(*net.IPNet)
@@ -149,7 +149,7 @@ func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 		}
 	}
 	if len(ipV4s) == 0 {
-		return nil, errorx.Wrap(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
+		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
 	}
 	return ipV4s, nil
 }
@@ -162,21 +162,24 @@ type BrowseRequest struct {
 }
 
 func (b *BrowseRequest) Read(reader io.Reader) error {
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, b))
+	if err := binary.Read(reader, binary.LittleEndian, b); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (b *BrowseRequest) Write(writer io.Writer) error {
 	if err := binary.Write(writer, binary.LittleEndian, b.IPAddress); err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if err := binary.Write(writer, binary.LittleEndian, b.MasterOnly); err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if err := binary.Write(writer, binary.LittleEndian, b.LowerSercosAddress); err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if err := binary.Write(writer, binary.LittleEndian, b.UpperSercosAddress); err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	return nil
 }
@@ -212,38 +215,44 @@ type browseResponse struct {
 func (b *BrowseResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &b.browseResponse)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	b.DisplayName = make([]byte, b.DisplayNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.DisplayName)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	err = binary.Read(reader, binary.LittleEndian, &b.HostNameLength)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	b.HostName = make([]byte, b.HostNameLength)
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, b.HostName))
+	err = binary.Read(reader, binary.LittleEndian, b.HostName)
+	if err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (b *BrowseResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, b.browseResponse)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if b.DisplayNameLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, b.DisplayName)
 		if err != nil {
-			return errorx.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 	err = binary.Write(writer, binary.LittleEndian, b.HostNameLength)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if b.HostNameLength > 0 {
-		return errorx.Wrap(binary.Write(writer, binary.LittleEndian, b.HostName))
+		if err = binary.Write(writer, binary.LittleEndian, b.HostName); err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }

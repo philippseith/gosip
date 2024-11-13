@@ -7,12 +7,14 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/joomcode/errorx"
 )
 
 func newUDPConn(ip net.IP) (*net.UDPConn, error) {
 	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
 	if err != nil {
-		return nil, err
+		return nil, errorx.EnsureStackTrace(err)
 	}
 	return net.ListenUDP("udp4", listenAddr)
 }
