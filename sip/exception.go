@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"braces.dev/errtrace"
 )
 
 // Exception, MessageType: 67.
@@ -16,11 +14,11 @@ type Exception struct {
 }
 
 func (c *Exception) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, c))
+	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c))
 }
 
 func (c *Exception) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *c))
+	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *c))
 }
 
 func (c *Exception) MessageType() MessageType {

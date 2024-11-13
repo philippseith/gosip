@@ -3,8 +3,6 @@ package sip
 import (
 	"context"
 	"time"
-
-	"braces.dev/errtrace"
 )
 
 func (c *conn) connect(ctx context.Context) error {
@@ -12,7 +10,7 @@ func (c *conn) connect(ctx context.Context) error {
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
 	select {
 	case <-ctx.Done():
-		return errtrace.Wrap(ctx.Err())
+		return errorx.Wrap(ctx.Err())
 	case respFunc := <-c.sendRequest(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
@@ -20,7 +18,7 @@ func (c *conn) connect(ctx context.Context) error {
 	}):
 		respPdu := &ConnectResponse{}
 		if err := respFunc(respPdu); err != nil {
-			return errtrace.Wrap(err)
+			return errorx.Wrap(err)
 		}
 		func() {
 			c.mxCR.Lock()
@@ -68,7 +66,7 @@ func (c *conn) cancelAllRequests(err error) {
 	defer c.mxRC.Unlock()
 
 	errFunc := func(PDU) error {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
 	for _, ch := range c.respChans {
 		cch := ch
@@ -95,5 +93,5 @@ func (c *conn) cleanUp() (err error) {
 		err = c.Conn.Close()
 		c.Conn = nil
 	}
-	return errtrace.Wrap(err)
+	return errorx.Wrap(err)
 }

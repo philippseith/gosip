@@ -7,8 +7,6 @@ import (
 	"net"
 	"os"
 	"time"
-
-	"braces.dev/errtrace"
 )
 
 func newUDPConn(ip net.IP) (*net.UDPConn, error) {
@@ -28,26 +26,26 @@ func sendUDP(conn net.PacketConn, address string, pdu PDU) error {
 	}
 	err := hdr.Write(writer)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
 	err = pdu.Write(writer)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
 	// Create target address
 	targetAddr, err := net.ResolveUDPAddr("udp4", address+":35021")
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
 	// Send the request
 	_, err = conn.WriteTo(writer.Bytes(), targetAddr)
-	return errtrace.Wrap(err)
+	return errorx.Wrap(err)
 }
 
 func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse func() T, ch chan<- Result[T]) bool {
 	err := conn.SetReadDeadline(time.Now().Add(timeout))
 	if err != nil {
-		ch <- Err[T](errtrace.Wrap(err))
+		ch <- Err[T](errorx.Wrap(err))
 		// If setting the deadline does not work,
 		// the go func might not end. We break here.
 		return false
@@ -60,7 +58,7 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			return true
 		}
-		ch <- Err[T](errtrace.Wrap(err))
+		ch <- Err[T](errorx.Wrap(err))
 		// If ReadFrom errored with something different we need to stop
 		return false
 	}
@@ -75,7 +73,7 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 	if err == nil {
 		ch <- Ok[T](resp)
 	} else {
-		ch <- Err[T](errtrace.Wrap(fmt.Errorf(
+		ch <- Err[T](errorx.Wrap(fmt.Errorf(
 			"%w: Can not parse packet %v: %w", Error, buf[:n], err)))
 		// Do not end the listening, there might come more (valid) responses
 	}

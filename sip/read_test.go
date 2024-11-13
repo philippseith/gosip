@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"braces.dev/errtrace"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/philippseith/gosip/sip"
@@ -108,7 +107,7 @@ func BenchmarkReadParallel(t *testing.B) {
 }
 
 func init() {
-	_ = errtrace.FormatString(errors.ErrUnsupported)
+	_ = errorx.FormatString(errors.ErrUnsupported)
 }
 
 func TestReadS192(t *testing.T) {

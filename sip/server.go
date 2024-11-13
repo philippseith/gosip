@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-
-	"braces.dev/errtrace"
 )
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
@@ -21,7 +19,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 
 	for _, option := range options {
 		if err := option(&server.connOptions); err != nil {
-			return errtrace.Wrap(err)
+			return errorx.Wrap(err)
 		}
 	}
 

@@ -3,8 +3,6 @@ package sip
 import (
 	"encoding/binary"
 	"io"
-
-	"braces.dev/errtrace"
 )
 
 // ConnectRequest MessageType 63
@@ -21,11 +19,11 @@ type ConnectRequest struct {
 }
 
 func (c *ConnectRequest) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, c))
+	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c))
 }
 
 func (c *ConnectRequest) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *c))
+	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *c))
 }
 
 func (c *ConnectRequest) MessageType() MessageType {
@@ -54,18 +52,18 @@ type connectResponse struct {
 func (c *ConnectResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &c.connectResponse)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
 	c.MessageTypes = make([]uint32, c.NoMessageTypes)
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, c.MessageTypes))
+	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c.MessageTypes))
 }
 
 func (c *ConnectResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, c.connectResponse)
 	if err != nil || c.NoMessageTypes == 0 {
-		return errtrace.Wrap(err)
+		return errorx.Wrap(err)
 	}
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, c.MessageTypes))
+	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, c.MessageTypes))
 }
 
 func (c *ConnectResponse) MessageType() MessageType {

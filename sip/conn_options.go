@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"braces.dev/errtrace"
 	"github.com/cenkalti/backoff/v4"
 )
 
@@ -28,7 +27,7 @@ func WithBusyTimeout(timeout int) ConnOption {
 			c.userBusyTimeout = uint32(timeout)
 			return nil
 		}
-		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 
@@ -39,7 +38,7 @@ func WithLeaseTimeout(timeout int) ConnOption {
 			c.userLeaseTimeout = uint32(timeout)
 			return nil
 		}
-		return errtrace.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 

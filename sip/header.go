@@ -3,8 +3,6 @@ package sip
 import (
 	"encoding/binary"
 	"io"
-
-	"braces.dev/errtrace"
 )
 
 type Header struct {
@@ -13,9 +11,9 @@ type Header struct {
 }
 
 func (h *Header) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, h))
+	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, h))
 }
 
 func (h *Header) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *h))
+	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *h))
 }
