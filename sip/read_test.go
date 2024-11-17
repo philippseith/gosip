@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"log"
 	"sync"
 	"testing"
@@ -104,10 +103,6 @@ func BenchmarkReadParallel(t *testing.B) {
 	b1 := <-d1
 	b2 := <-d2
 	assert.Equal(t, b1, b2)
-}
-
-func init() {
-	_ = errorx.FormatString(errors.ErrUnsupported)
 }
 
 func TestReadS192(t *testing.T) {
