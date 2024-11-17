@@ -1,10 +1,12 @@
 package sip
 
+import "github.com/joomcode/errorx"
+
 func signal(getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
-		return errorx.Wrap(ErrorClosed)
+		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 	ch <- struct{}{}
 	return nil
@@ -14,11 +16,11 @@ func wait(getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
-		return errorx.Wrap(ErrorClosed)
+		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 	_, ok := <-ch
 	if !ok {
-		return errorx.Wrap(ErrorClosed)
+		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"time"
+
+	"github.com/joomcode/errorx"
 )
 
 // Conn is a SIP client connection. It can be used to read and write SERCOS
@@ -77,18 +79,22 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	wcOpts := &connOptions{}
 	for _, option := range options {
 		if err := option(wcOpts); err != nil {
-			return nil, errorx.Wrap(err)
+			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
 	// Fallback to net.Dial
 	if wcOpts.dial == nil {
 		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
-			return net.Dial(network, address)
+			netConn, err := net.Dial(network, address)
+			if err != nil {
+				errorx.EnsureStackTrace(err)
+			}
+			return netConn, err
 		}
 	}
 	netConn, err := wcOpts.dial(network, address)
 	if err != nil {
-		return nil, errorx.Wrap(err)
+		return nil, err
 	}
 
 	c := &conn{
@@ -109,7 +115,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {
-			return nil, errorx.Wrap(err)
+			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
@@ -121,11 +127,11 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
-		c.cancelAllRequests(errorx.Wrap(context.Cause(sendRecvCtx)))
+		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))
 		c.setClosed()
 	}()
 
-	return c, errorx.Wrap(c.connect(ctx))
+	return c, c.connect(ctx)
 }
 
 func (c *conn) Close() error {
@@ -133,7 +139,7 @@ func (c *conn) Close() error {
 		c.cancel(ErrorClosed)
 	}
 	c.setClosed()
-	return errorx.Wrap(c.cleanUp())
+	return c.cleanUp()
 }
 
 func (c *conn) setClosed() {
@@ -189,31 +195,31 @@ func (c *conn) MessageTypes() []uint32 {
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	return errorx.Wrap(sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{}))
+	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
-	return *resp, errorx.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
-	return *resp, errorx.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
-	return *resp, errorx.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
-	return *resp, errorx.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
@@ -228,7 +234,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 		},
 		Data: data,
 	}, &WriteDataResponse{})
-	return errorx.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {

@@ -3,6 +3,8 @@ package sip
 import (
 	"encoding/binary"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 type Header struct {
@@ -11,9 +13,9 @@ type Header struct {
 }
 
 func (h *Header) Read(reader io.Reader) error {
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, h))
+	return errorx.EnsureStackTrace(binary.Read(reader, binary.LittleEndian, h))
 }
 
 func (h *Header) Write(writer io.Writer) error {
-	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *h))
+	return errorx.EnsureStackTrace(binary.Write(writer, binary.LittleEndian, *h))
 }

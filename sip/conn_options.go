@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/joomcode/errorx"
 )
 
 // ConnOption is option for Conn
@@ -27,7 +28,7 @@ func WithBusyTimeout(timeout int) ConnOption {
 			c.userBusyTimeout = uint32(timeout)
 			return nil
 		}
-		return errorx.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 
@@ -38,7 +39,7 @@ func WithLeaseTimeout(timeout int) ConnOption {
 			c.userLeaseTimeout = uint32(timeout)
 			return nil
 		}
-		return errorx.Wrap(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0", Error))
 	}
 }
 

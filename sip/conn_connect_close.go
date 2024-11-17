@@ -3,6 +3,8 @@ package sip
 import (
 	"context"
 	"time"
+
+	"github.com/joomcode/errorx"
 )
 
 func (c *conn) connect(ctx context.Context) error {
@@ -10,7 +12,7 @@ func (c *conn) connect(ctx context.Context) error {
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
 	select {
 	case <-ctx.Done():
-		return errorx.Wrap(ctx.Err())
+		return errorx.EnsureStackTrace(ctx.Err())
 	case respFunc := <-c.sendRequest(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
@@ -18,7 +20,7 @@ func (c *conn) connect(ctx context.Context) error {
 	}):
 		respPdu := &ConnectResponse{}
 		if err := respFunc(respPdu); err != nil {
-			return errorx.Wrap(err)
+			return err
 		}
 		func() {
 			c.mxCR.Lock()
@@ -66,7 +68,7 @@ func (c *conn) cancelAllRequests(err error) {
 	defer c.mxRC.Unlock()
 
 	errFunc := func(PDU) error {
-		return errorx.Wrap(err)
+		return err
 	}
 	for _, ch := range c.respChans {
 		cch := ch
@@ -91,7 +93,10 @@ func (c *conn) cleanUp() (err error) {
 
 	if c.Conn != nil {
 		err = c.Conn.Close()
+		if err != nil {
+			errorx.EnsureStackTrace(err)
+		}
 		c.Conn = nil
 	}
-	return errorx.Wrap(err)
+	return err
 }

@@ -124,7 +124,7 @@ func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
 	}
 	for _, option := range options {
 		if err := option(r); err != nil {
-			return r, err
+			return r, errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.timeout > 0 {
@@ -366,7 +366,7 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 	defer c.mxTryConnect.Unlock()
 
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return errorx.EnsureStackTrace(ctx.Err())
 	}
 
 	cc := c.Conn()
@@ -397,8 +397,11 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 	select {
 	case <-ctx.Done():
 		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
-		return ErrorTimeout
+		return errorx.EnsureStackTrace(ErrorTimeout)
 	case result := <-ch:
+		if result.Err != nil {
+			errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
+		}
 		logger.Printf("%s: waitForDial = %v", c.address, result)
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
@@ -443,12 +446,12 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		logger.Printf("%s: backoff = %v", address, backoffSpan)
 
 		if backoffSpan == backoff.Stop {
-			ch <- Err[Conn](errors.Join(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum), err))
+			ch <- Err[Conn](errors.Join(errorx.EnsureStackTrace(fmt.Errorf("%w: %v", ErrorRetriesExceeded, spanSum)), err))
 			return
 		}
 		select {
 		case <-ctx.Done():
-			ch <- Err[Conn](ctx.Err()))
+			ch <- Err[Conn](errorx.EnsureStackTrace(ctx.Err()))
 			return
 		case <-time.After(backoffSpan):
 			spanSum += backoffSpan
