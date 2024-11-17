@@ -94,7 +94,7 @@ func (c *conn) cleanUp() (err error) {
 	if c.Conn != nil {
 		err = c.Conn.Close()
 		if err != nil {
-			errorx.EnsureStackTrace(err)
+			err = errorx.EnsureStackTrace(err)
 		}
 		c.Conn = nil
 	}

@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 // Exception, MessageType: 67.
@@ -14,11 +16,17 @@ type Exception struct {
 }
 
 func (c *Exception) Read(reader io.Reader) error {
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c))
+	if err := binary.Read(reader, binary.LittleEndian, c); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *Exception) Write(writer io.Writer) error {
-	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *c))
+	if err := binary.Write(writer, binary.LittleEndian, *c); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *Exception) MessageType() MessageType {

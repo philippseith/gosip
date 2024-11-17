@@ -87,7 +87,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
 			netConn, err := net.Dial(network, address)
 			if err != nil {
-				errorx.EnsureStackTrace(err)
+				err = errorx.EnsureStackTrace(err)
 			}
 			return netConn, err
 		}

@@ -3,6 +3,8 @@ package sip
 import (
 	"encoding/binary"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 // ConnectRequest MessageType 63
@@ -19,11 +21,17 @@ type ConnectRequest struct {
 }
 
 func (c *ConnectRequest) Read(reader io.Reader) error {
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c))
+	if err := binary.Read(reader, binary.LittleEndian, c); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *ConnectRequest) Write(writer io.Writer) error {
-	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *c))
+	if err := binary.Write(writer, binary.LittleEndian, *c); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *ConnectRequest) MessageType() MessageType {
@@ -52,18 +60,26 @@ type connectResponse struct {
 func (c *ConnectResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &c.connectResponse)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	c.MessageTypes = make([]uint32, c.NoMessageTypes)
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, c.MessageTypes))
+	if err := binary.Read(reader, binary.LittleEndian, c.MessageTypes); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *ConnectResponse) Write(writer io.Writer) error {
-	err := binary.Write(writer, binary.LittleEndian, c.connectResponse)
-	if err != nil || c.NoMessageTypes == 0 {
-		return errorx.Wrap(err)
+	if err := binary.Write(writer, binary.LittleEndian, c.connectResponse); err != nil {
+		return errorx.EnsureStackTrace(err)
 	}
-	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, c.MessageTypes))
+	if c.NoMessageTypes == 0 {
+		return nil
+	}
+	if err := binary.Write(writer, binary.LittleEndian, c.MessageTypes); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (c *ConnectResponse) MessageType() MessageType {
