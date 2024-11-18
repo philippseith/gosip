@@ -3,16 +3,24 @@ package sip
 import (
 	"encoding/binary"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 type ReadEverythingRequest Request
 
 func (r *ReadEverythingRequest) Read(reader io.Reader) error {
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, r))
+	if err := binary.Read(reader, binary.LittleEndian, r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingRequest) Write(writer io.Writer) error {
-	return errorx.Wrap(binary.Write(writer, binary.LittleEndian, *r))
+	if err := binary.Write(writer, binary.LittleEndian, *r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingRequest) MessageType() MessageType {
@@ -41,41 +49,48 @@ type readEverythingResponse struct {
 func (r *ReadEverythingResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &r.readEverythingResponse)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	r.Name = make([]byte, r.NameLength)
 	err = binary.Read(reader, binary.LittleEndian, r.Name)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	r.Unit = make([]byte, r.UnitLength)
 	err = binary.Read(reader, binary.LittleEndian, r.Unit)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	r.Data = make([]byte, r.DataLength)
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, r.Data))
+	err = binary.Read(reader, binary.LittleEndian, r.Data)
+	if err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, r.readEverythingResponse)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if r.NameLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, r.Name)
 		if err != nil {
-			return errorx.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.UnitLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, r.Unit)
 		if err != nil {
-			return errorx.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.DataLength > 0 {
-		return errorx.Wrap(binary.Write(writer, binary.LittleEndian, r.Data))
+		err = binary.Write(writer, binary.LittleEndian, r.Data)
+		if err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }
