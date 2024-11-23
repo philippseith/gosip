@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
+
+	"github.com/joomcode/errorx"
 )
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
@@ -19,7 +22,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 
 	for _, option := range options {
 		if err := option(&server.connOptions); err != nil {
-			return errorx.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 
@@ -35,6 +38,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 					return
 				}
 				if err != nil {
+					log.Printf("accept: %+v", err)
 					continue
 				}
 				server.conn = conn
@@ -63,7 +67,7 @@ func (c connServer) serve(ctx context.Context) {
 				return
 			}
 			if err := c.handleMessages(); err != nil {
-				logger.Printf("%v: %v", c.conn.RemoteAddr(), err)
+				logger.Printf("%v: %+v", c.conn.RemoteAddr(), err)
 				return
 			}
 		}
