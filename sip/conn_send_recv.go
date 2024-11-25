@@ -221,7 +221,10 @@ func (c *conn) writeHeader(conn io.Writer, pdu PDU) (transactionID uint32, err e
 		TransactionID: atomic.AddUint32(&c.transactionID, 1),
 		MessageType:   pdu.MessageType(),
 	}
-	return h.TransactionID, errorx.EnsureStackTrace(h.Write(conn))
+	if err := h.Write(conn); err != nil {
+		return h.TransactionID, errorx.EnsureStackTrace(err)
+	}
+	return h.TransactionID, nil
 }
 
 func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *conn, req PDU, resp Response) error {

@@ -3,6 +3,8 @@ package sip
 import (
 	"encoding/binary"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 type WriteDataRequest struct {
@@ -17,19 +19,24 @@ type writeDataRequest struct {
 func (w *WriteDataRequest) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &w.writeDataRequest)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	w.Data = make([]byte, w.DataLength)
-	return errorx.Wrap(binary.Read(reader, binary.LittleEndian, w.Data))
+	if err = binary.Read(reader, binary.LittleEndian, w.Data); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (w *WriteDataRequest) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, w.writeDataRequest)
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if w.DataLength > 0 {
-		return errorx.Wrap(binary.Write(writer, binary.LittleEndian, w.Data))
+		if err = binary.Write(writer, binary.LittleEndian, w.Data); err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }

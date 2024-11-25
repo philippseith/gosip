@@ -36,11 +36,6 @@ type Request struct {
 
 var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
 
-func init() {
-	// Hack to allow better display of wrapped errors in the debugger
-	_ = errorx.FormatString(errors.ErrUnsupported)
-}
-
 // Constants for the validElements field in ReadDescriptionResponse and ReadEverythingResponse
 const (
 	ElmDataState uint16 = 0x0001

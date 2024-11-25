@@ -28,26 +28,29 @@ func sendUDP(conn net.PacketConn, address string, pdu PDU) error {
 	}
 	err := hdr.Write(writer)
 	if err != nil {
-		return errorx.Wrap(err)
+		return err
 	}
 	err = pdu.Write(writer)
 	if err != nil {
-		return errorx.Wrap(err)
+		return err
 	}
 	// Create target address
 	targetAddr, err := net.ResolveUDPAddr("udp4", address+":35021")
 	if err != nil {
-		return errorx.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	// Send the request
 	_, err = conn.WriteTo(writer.Bytes(), targetAddr)
-	return errorx.Wrap(err)
+	if err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse func() T, ch chan<- Result[T]) bool {
 	err := conn.SetReadDeadline(time.Now().Add(timeout))
 	if err != nil {
-		ch <- Err[T](errorx.Wrap(err))
+		ch <- Err[T](errorx.EnsureStackTrace(err))
 		// If setting the deadline does not work,
 		// the go func might not end. We break here.
 		return false
@@ -60,7 +63,7 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			return true
 		}
-		ch <- Err[T](errorx.Wrap(err))
+		ch <- Err[T](errorx.EnsureStackTrace(err))
 		// If ReadFrom errored with something different we need to stop
 		return false
 	}
@@ -75,7 +78,7 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 	if err == nil {
 		ch <- Ok[T](resp)
 	} else {
-		ch <- Err[T](errorx.Wrap(fmt.Errorf(
+		ch <- Err[T](errorx.EnsureStackTrace(fmt.Errorf(
 			"%w: Can not parse packet %v: %w", Error, buf[:n], err)))
 		// Do not end the listening, there might come more (valid) responses
 	}
