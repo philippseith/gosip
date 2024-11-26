@@ -71,7 +71,13 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	return dial(context.Background(), network, address, options...)
+	c, err := dial(context.Background(), network, address, options...)
+	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
+	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
+	if c == nil {
+		return nil, err
+	}
+	return c, err
 }
 
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
