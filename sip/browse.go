@@ -33,7 +33,9 @@ func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.P
 		go func(conn net.PacketConn) {
 			defer func() {
 				wg.Done()
-				_ = conn.Close()
+				if conn != nil {
+					_ = conn.Close()
+				}
 			}()
 
 			for {
