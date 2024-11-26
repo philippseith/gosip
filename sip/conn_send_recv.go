@@ -174,7 +174,7 @@ readUntilValidResponse:
 				}
 				err = pdu.Read(c.timeoutReader)
 				if err != nil {
-					errorx.Decorate(err, "received %v, id: %v", pdu.MessageType(), h.TransactionID)
+					return errorx.Decorate(err, "received %v, id: %v", pdu.MessageType(), h.TransactionID)
 				}
 				return err
 			}

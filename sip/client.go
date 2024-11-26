@@ -326,7 +326,7 @@ func parseTryConnectDo[T any](c *client,
 	}
 
 	errs := make([]error, 0, requestSettings.retries+1)
-	for i := 0; i <= int(requestSettings.retries); i++ {
+	for i := uint(0); i <= requestSettings.retries; i++ {
 
 		err := c.tryConnect(requestSettings.ctx)
 		if err != nil {
@@ -400,7 +400,7 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 		return errorx.EnsureStackTrace(ErrorTimeout)
 	case result := <-ch:
 		if result.Err != nil {
-			errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
+			return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
 		}
 		logger.Printf("%s: waitForDial = %v", c.address, result)
 		if errors.Is(result.Err, context.DeadlineExceeded) {

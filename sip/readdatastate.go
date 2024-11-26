@@ -10,8 +10,8 @@ import (
 type ReadDataStateRequest Request
 
 func (r *ReadDataStateRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
-	r.SlaveIndex = uint16(slaveIndex)
-	r.SlaveExtension = uint16(slaveExtension)
+	r.SlaveIndex = uint16(slaveIndex)         // nolint:gosec
+	r.SlaveExtension = uint16(slaveExtension) // nolint:gosec
 	r.IDN = idn
 }
 
@@ -57,8 +57,8 @@ func (r *ReadDataStateResponse) MessageType() MessageType {
 
 func newReadDataStatePDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadDataStateRequest, *ReadDataStateResponse) {
 	return &ReadDataStateRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadDataStateResponse{}
 }

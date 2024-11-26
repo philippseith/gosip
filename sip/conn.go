@@ -223,14 +223,25 @@ func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
+	if len(data) > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
+	}
 	err := sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			Request: Request{
-				SlaveIndex:     uint16(slaveIndex),
-				SlaveExtension: uint16(slaveExtension),
+				SlaveIndex:     u16slaveIndex,
+				SlaveExtension: u16slaveExtension,
 				IDN:            idn,
 			},
-			DataLength: uint32(len(data)),
+			DataLength: uint32(len(data)), //nolint:gosec
 		},
 		Data: data,
 	}, &WriteDataResponse{})
