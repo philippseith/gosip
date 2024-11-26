@@ -136,7 +136,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
-		c.cancel(ErrorClosed)
+		c.cancel(errorx.EnsureStackTrace(ErrorClosed))
 	}
 	c.setClosed()
 	return c.cleanUp()
