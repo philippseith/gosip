@@ -10,8 +10,8 @@ import (
 type ReadOnlyDataRequest Request
 
 func (r *ReadOnlyDataRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
-	r.SlaveIndex = uint16(slaveIndex)
-	r.SlaveExtension = uint16(slaveExtension)
+	r.SlaveIndex = uint16(slaveIndex)         // nolint:gosec
+	r.SlaveExtension = uint16(slaveExtension) // nolint:gosec
 	r.IDN = idn
 }
 
@@ -75,8 +75,8 @@ func (r *ReadOnlyDataResponse) MessageType() MessageType {
 
 func newReadOnlyDataPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadOnlyDataRequest, *ReadOnlyDataResponse) {
 	return &ReadOnlyDataRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadOnlyDataResponse{}
 }

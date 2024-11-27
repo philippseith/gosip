@@ -21,7 +21,11 @@ func TestReadEverything(t *testing.T) {
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadEverything(context.Background(), 0, 0, 1)
 
@@ -36,7 +40,11 @@ func TestReadOnlyData(t *testing.T) {
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1)
 
@@ -51,7 +59,11 @@ func TestReadDescription(t *testing.T) {
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadDescription(context.Background(), 0, 0, 1)
 
@@ -66,7 +78,11 @@ func TestReadDataState(t *testing.T) {
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	_, err = conn.ReadDataState(context.Background(), 0, 0, 1)
 
@@ -77,13 +93,21 @@ func BenchmarkReadParallel(t *testing.B) {
 	log.SetFlags(log.Lmicroseconds)
 
 	conn, err := sip.Dial("tcp", serverAddress)
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	d1 := make(chan []byte)
 	go func() {
@@ -112,7 +136,11 @@ func TestReadS192(t *testing.T) {
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	defer measureTime("")()
 

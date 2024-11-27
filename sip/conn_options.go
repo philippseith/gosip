@@ -24,22 +24,22 @@ type connOptions struct {
 // WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
 func WithBusyTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
-		if timeout > 0 {
+		if timeout > 0 && timeout < int(^uint32(0)) {
 			c.userBusyTimeout = uint32(timeout)
 			return nil
 		}
-		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0 and smaller %v", Error, ^uint32(0)))
 	}
 }
 
 // WithLeaseTimeout sets the LeaseTimeout to negotiate with the server in ms. Default is 10000ms.
 func WithLeaseTimeout(timeout int) ConnOption {
 	return func(c *connOptions) error {
-		if timeout > 0 {
+		if timeout > 0 && timeout < int(^uint32(0)) {
 			c.userLeaseTimeout = uint32(timeout)
 			return nil
 		}
-		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0", Error))
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0 and smaller %v", Error, ^uint32(0)))
 	}
 }
 

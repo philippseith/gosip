@@ -71,7 +71,13 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	return dial(context.Background(), network, address, options...)
+	c, err := dial(context.Background(), network, address, options...)
+	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
+	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
+	if c == nil {
+		return nil, err
+	}
+	return c, err
 }
 
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
@@ -136,7 +142,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
-		c.cancel(ErrorClosed)
+		c.cancel(errorx.EnsureStackTrace(ErrorClosed))
 	}
 	c.setClosed()
 	return c.cleanUp()
@@ -223,14 +229,25 @@ func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
+	if len(data) > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
+	}
 	err := sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			Request: Request{
-				SlaveIndex:     uint16(slaveIndex),
-				SlaveExtension: uint16(slaveExtension),
+				SlaveIndex:     u16slaveIndex,
+				SlaveExtension: u16slaveExtension,
 				IDN:            idn,
 			},
-			DataLength: uint32(len(data)),
+			DataLength: uint32(len(data)), //nolint:gosec
 		},
 		Data: data,
 	}, &WriteDataResponse{})

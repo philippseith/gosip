@@ -101,8 +101,8 @@ func (r *ReadEverythingResponse) MessageType() MessageType {
 
 func newReadEverythingPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadEverythingRequest, *ReadEverythingResponse) {
 	return &ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadEverythingResponse{}
 }
