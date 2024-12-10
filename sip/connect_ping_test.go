@@ -19,7 +19,9 @@ func TestConnect(t *testing.T) {
 	}()
 
 	assert.NoError(t, err)
-	assert.NotEmpty(t, conn.MessageTypes())
+	if conn != nil {
+		assert.NotEmpty(t, conn.MessageTypes())
+	}
 }
 
 func TestConnectNoServer(t *testing.T) {
