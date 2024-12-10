@@ -103,7 +103,9 @@ func (c *conn) enqueueRequest(req request) error {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 	// Send request job into the queue of the sendLoop
+	atomic.AddInt32(&c.reqChWaitCount, 1)
 	ch <- req
+	atomic.AddInt32(&c.reqChWaitCount, -1)
 	return nil
 }
 
