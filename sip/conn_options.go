@@ -3,9 +3,14 @@ package sip
 import (
 	"fmt"
 	"io"
+	"net"
+	"sync"
+
+	"github.com/mikioh/tcp"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/joomcode/errorx"
+	"github.com/mikioh/tcpopt"
 )
 
 // ConnOption is option for Conn
@@ -13,6 +18,8 @@ type ConnOption func(c *connOptions) error
 
 type connOptions struct {
 	dial                         func(string, string) (io.ReadWriteCloser, error)
+	cxSetOption                  sync.RWMutex
+	setOption                    func(io.ReadWriteCloser, tcpopt.Option) error
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -91,4 +98,37 @@ func WithWriter(writerFactory func(io.Writer) io.Writer) ConnOption {
 		c.writerFactory = writerFactory
 		return nil
 	}
+}
+
+func WithCorking() ConnOption {
+	return func(c *connOptions) error {
+		c.setSetOption(func(conn io.ReadWriteCloser, option tcpopt.Option) error {
+			netConn, ok := conn.(net.Conn)
+			if !ok {
+				c.setOption = nil
+				return errorx.EnsureStackTrace(fmt.Errorf("%w: conn is not a net.Conn", Error))
+			}
+			rawConn, err := tcp.NewConn(netConn)
+			if err != nil {
+				c.setSetOption(nil)
+				return err
+			}
+			return rawConn.SetOption(option)
+		})
+		return nil
+	}
+}
+
+func (c *connOptions) setSetOption(setOption func(io.ReadWriteCloser, tcpopt.Option) error) {
+	c.cxSetOption.Lock()
+	defer c.cxSetOption.Unlock()
+
+	c.setOption = setOption
+}
+
+func (c *connOptions) getSetOption() func(io.ReadWriteCloser, tcpopt.Option) error {
+	c.cxSetOption.RLock()
+	defer c.cxSetOption.RUnlock()
+
+	return c.setOption
 }

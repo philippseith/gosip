@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joomcode/errorx"
+	"github.com/mikioh/tcpopt"
 )
 
 // sendLoop is sending the requests it gets from the request queue. Before it
@@ -25,9 +26,13 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 				return errorx.EnsureStackTrace(context.Cause(ctx))
 			// Get a new request
 			case req, ok := <-c.dequeueRequest():
+				<-time.After(30 * time.Millisecond)
 				if !ok {
 					return errorx.EnsureStackTrace(ErrorClosed)
 				}
+				//
+				atomic.AddInt32(&c.reqChWaitCount, -1)
+
 				if err := wait(c.transactionAllowed); err != nil {
 					return err
 				}
@@ -105,7 +110,6 @@ func (c *conn) enqueueRequest(req request) error {
 	// Send request job into the queue of the sendLoop
 	atomic.AddInt32(&c.reqChWaitCount, 1)
 	ch <- req
-	atomic.AddInt32(&c.reqChWaitCount, -1)
 	return nil
 }
 
@@ -113,7 +117,33 @@ func (c *conn) enqueueRequest(req request) error {
 func (c *conn) send(req request) error {
 	// The write function of the request is build in sendAndWaitForResponse,
 	// where also the transactionID is set.
-	transactionID, err := req.write(c.Conn)
+	transactionID, err := func() (uint32, error) {
+		// Cork the connection to send the requests waiting in the queue in one package
+		setOption := c.getSetOption()
+		if setOption != nil {
+			logger.Printf("corking")
+			if err := setOption(c.Conn, tcpopt.Cork(true)); err != nil {
+				c.setSetOption(nil)
+				logger.Printf("corking failed %s", err)
+			}
+		}
+		//
+		defer func() {
+			// TODO This does not work
+			// TODO Cork has to be removed mtu is nearly reached or no more requests are waiting
+
+			setOption := c.getSetOption()
+			if setOption != nil && atomic.LoadInt32(&c.reqChWaitCount) == 0 {
+				logger.Printf("uncorking")
+				if err := setOption(c.Conn, tcpopt.Cork(false)); err != nil {
+					c.setSetOption(nil)
+					logger.Printf("corking failed %s", err)
+				}
+			}
+		}()
+
+		return req.write(c.Conn) // TODO Move the Corking/Uncorking to the write function
+	}()
 	if err != nil {
 		return err
 	}

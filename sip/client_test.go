@@ -21,12 +21,12 @@ func TestClientReconnectLeaseExceeded(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress)
+	c := sip.NewClient("tcp", serverAddress, sip.WithCorking())
 	// the sequentialized version should be no stress at all
 	// c := sip.NewClient("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 	defer c.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	tick := time.NewTicker(time.Millisecond * 15)

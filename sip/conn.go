@@ -81,7 +81,7 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 }
 
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
-	// Check for WithConnnection option
+	// Check for WithDial option
 	wcOpts := &connOptions{}
 	for _, option := range options {
 		if err := option(wcOpts); err != nil {
