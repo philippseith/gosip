@@ -6,8 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-
-	"braces.dev/errtrace"
 )
 
 // Port is the default SIP port
@@ -37,11 +35,6 @@ type Request struct {
 }
 
 var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
-
-func init() {
-	// Hack to allow better display of wrapped errors in the debugger
-	_ = errtrace.FormatString(errors.ErrUnsupported)
-}
 
 // Constants for the validElements field in ReadDescriptionResponse and ReadEverythingResponse
 const (

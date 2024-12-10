@@ -17,6 +17,7 @@ type conn struct {
 	transactionID uint32
 
 	reqCh                chan request
+	reqChWaitCount       int32 // number of goroutines waiting for a response at reqCh
 	transactionStartedCh chan struct{}
 
 	respChans map[uint32]chan func(PDU) error

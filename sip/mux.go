@@ -2,8 +2,11 @@ package sip
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
+
+	"github.com/joomcode/errorx"
 )
 
 // Mux creates a multiplexer which listens on the given listener and forwards
@@ -35,11 +38,19 @@ func (m *mux) Ping(options ...RequestOption) error {
 }
 
 func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error) {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return ReadEverythingResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return ReadEverythingResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadEverythingRequestMsgType,
 		Request: Request{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
+			SlaveIndex:     u16slaveIndex,
+			SlaveExtension: u16slaveExtension,
 			IDN:            idn,
 		},
 	}, func() (any, error) {
@@ -49,11 +60,19 @@ func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options
 }
 
 func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error) {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return ReadOnlyDataResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return ReadOnlyDataResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadOnlyDataRequestMsgType,
 		Request: Request{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
+			SlaveIndex:     u16slaveIndex,
+			SlaveExtension: u16slaveExtension,
 			IDN:            idn,
 		},
 	}, func() (any, error) {
@@ -63,11 +82,19 @@ func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options .
 }
 
 func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error) {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return ReadDescriptionResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return ReadDescriptionResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadDescriptionRequestMsgType,
 		Request: Request{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
+			SlaveIndex:     u16slaveIndex,
+			SlaveExtension: u16slaveExtension,
 			IDN:            idn,
 		},
 	}, func() (any, error) {
@@ -77,11 +104,19 @@ func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32, option
 }
 
 func (m *mux) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error) {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return ReadDataStateResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return ReadDataStateResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
 		MessageType: ReadDataStateRequestMsgType,
 		Request: Request{
-			SlaveIndex:     uint16(slaveIndex),
-			SlaveExtension: uint16(slaveExtension),
+			SlaveIndex:     u16slaveIndex,
+			SlaveExtension: u16slaveExtension,
 			IDN:            idn,
 		},
 	}, func() (any, error) {

@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 // Conn is a SIP client connection. It can be used to read and write SERCOS
@@ -71,7 +71,13 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	return dial(context.Background(), network, address, options...)
+	c, err := dial(context.Background(), network, address, options...)
+	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
+	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
+	if c == nil {
+		return nil, err
+	}
+	return c, err
 }
 
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
@@ -79,18 +85,22 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	wcOpts := &connOptions{}
 	for _, option := range options {
 		if err := option(wcOpts); err != nil {
-			return nil, errtrace.Wrap(err)
+			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
 	// Fallback to net.Dial
 	if wcOpts.dial == nil {
 		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
-			return net.Dial(network, address)
+			netConn, err := net.Dial(network, address)
+			if err != nil {
+				err = errorx.EnsureStackTrace(err)
+			}
+			return netConn, err
 		}
 	}
 	netConn, err := wcOpts.dial(network, address)
 	if err != nil {
-		return nil, errtrace.Wrap(err)
+		return nil, err
 	}
 
 	c := &conn{
@@ -111,7 +121,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {
-			return nil, errtrace.Wrap(err)
+			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
@@ -123,19 +133,19 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
-		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
+		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))
 		c.setClosed()
 	}()
 
-	return c, errtrace.Wrap(c.connect(ctx))
+	return c, c.connect(ctx)
 }
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
-		c.cancel(ErrorClosed)
+		c.cancel(errorx.EnsureStackTrace(ErrorClosed))
 	}
 	c.setClosed()
-	return errtrace.Wrap(c.cleanUp())
+	return c.cleanUp()
 }
 
 func (c *conn) setClosed() {
@@ -191,46 +201,57 @@ func (c *conn) MessageTypes() []uint32 {
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{}))
+	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveExtension := uint16(slaveExtension)
+	if len(data) > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
+	}
 	err := sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			Request: Request{
-				SlaveIndex:     uint16(slaveIndex),
-				SlaveExtension: uint16(slaveExtension),
+				SlaveIndex:     u16slaveIndex,
+				SlaveExtension: u16slaveExtension,
 				IDN:            idn,
 			},
-			DataLength: uint32(len(data)),
+			DataLength: uint32(len(data)), //nolint:gosec
 		},
 		Data: data,
 	}, &WriteDataResponse{})
-	return errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {

@@ -4,23 +4,29 @@ import (
 	"encoding/binary"
 	"io"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 type ReadOnlyDataRequest Request
 
 func (r *ReadOnlyDataRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
-	r.SlaveIndex = uint16(slaveIndex)
-	r.SlaveExtension = uint16(slaveExtension)
+	r.SlaveIndex = uint16(slaveIndex)         // nolint:gosec
+	r.SlaveExtension = uint16(slaveExtension) // nolint:gosec
 	r.IDN = idn
 }
 
 func (r *ReadOnlyDataRequest) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
+	if err := binary.Read(reader, binary.LittleEndian, r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadOnlyDataRequest) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
+	if err := binary.Write(writer, binary.LittleEndian, *r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadOnlyDataRequest) MessageType() MessageType {
@@ -40,19 +46,25 @@ type readOnlyDataResponse struct {
 func (r *ReadOnlyDataResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &r.readOnlyDataResponse)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	r.Data = make([]byte, r.DataLength)
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r.Data))
+	err = binary.Read(reader, binary.LittleEndian, r.Data)
+	if err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadOnlyDataResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, r.readOnlyDataResponse)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if r.DataLength > 0 {
-		return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, r.Data))
+		if err = binary.Write(writer, binary.LittleEndian, r.Data); err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }
@@ -63,8 +75,8 @@ func (r *ReadOnlyDataResponse) MessageType() MessageType {
 
 func newReadOnlyDataPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadOnlyDataRequest, *ReadOnlyDataResponse) {
 	return &ReadOnlyDataRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadOnlyDataResponse{}
 }

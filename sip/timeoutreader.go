@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 type timeoutReader struct {
@@ -31,9 +31,12 @@ func (t *timeoutReader) Read(p []byte) (n int, err error) {
 	select {
 	case r := <-read:
 		copy(p, r.p)
-		return r.n, errtrace.Wrap(r.err)
+		if r.err != nil {
+			return r.n, errorx.EnsureStackTrace(r.err)
+		}
+		return r.n, nil
 	case <-time.After(t.Timeout()):
-		return 0, errtrace.Wrap(ErrorTimeout)
+		return 0, errorx.EnsureStackTrace(ErrorTimeout)
 	}
 }
 

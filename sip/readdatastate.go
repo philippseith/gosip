@@ -4,23 +4,29 @@ import (
 	"encoding/binary"
 	"io"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 type ReadDataStateRequest Request
 
 func (r *ReadDataStateRequest) Init(slaveIndex, slaveExtension int, idn uint32) {
-	r.SlaveIndex = uint16(slaveIndex)
-	r.SlaveExtension = uint16(slaveExtension)
+	r.SlaveIndex = uint16(slaveIndex)         // nolint:gosec
+	r.SlaveExtension = uint16(slaveExtension) // nolint:gosec
 	r.IDN = idn
 }
 
 func (r *ReadDataStateRequest) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
+	if err := binary.Read(reader, binary.LittleEndian, r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadDataStateRequest) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
+	if err := binary.Write(writer, binary.LittleEndian, *r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadDataStateRequest) MessageType() MessageType {
@@ -32,11 +38,17 @@ type ReadDataStateResponse struct {
 }
 
 func (r *ReadDataStateResponse) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
+	if err := binary.Read(reader, binary.LittleEndian, r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadDataStateResponse) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
+	if err := binary.Write(writer, binary.LittleEndian, *r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadDataStateResponse) MessageType() MessageType {
@@ -45,8 +57,8 @@ func (r *ReadDataStateResponse) MessageType() MessageType {
 
 func newReadDataStatePDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadDataStateRequest, *ReadDataStateResponse) {
 	return &ReadDataStateRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadDataStateResponse{}
 }
