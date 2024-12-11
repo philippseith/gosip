@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"sync"
@@ -31,6 +32,8 @@ type conn struct {
 
 	mxState sync.RWMutex
 	closed  bool
+
+	mtuWriter *bufio.Writer
 }
 
 type request struct {

@@ -1,15 +1,14 @@
 package sip
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
 
 	"github.com/joomcode/errorx"
-	"github.com/mikioh/tcpopt"
 )
 
 // sendLoop is sending the requests it gets from the request queue. Before it
@@ -118,31 +117,12 @@ func (c *conn) send(req request) error {
 	// The write function of the request is build in sendAndWaitForResponse,
 	// where also the transactionID is set.
 	transactionID, err := func() (uint32, error) {
-		// Cork the connection to send the requests waiting in the queue in one package
-		setOption := c.getSetOption()
-		if setOption != nil {
-			logger.Printf("corking")
-			if err := setOption(c.Conn, tcpopt.Cork(true)); err != nil {
-				c.setSetOption(nil)
-				logger.Printf("corking failed %s", err)
-			}
+		n, err := req.write(c.mtuWriter)
+		// if no more requests are there to send, then flush
+		if atomic.LoadInt32(&c.reqChWaitCount) == 0 {
+			errors.Join(err, c.mtuWriter.Flush())
 		}
-		//
-		defer func() {
-			// TODO This does not work
-			// TODO Cork has to be removed mtu is nearly reached or no more requests are waiting
-
-			setOption := c.getSetOption()
-			if setOption != nil && atomic.LoadInt32(&c.reqChWaitCount) == 0 {
-				logger.Printf("uncorking")
-				if err := setOption(c.Conn, tcpopt.Cork(false)); err != nil {
-					c.setSetOption(nil)
-					logger.Printf("corking failed %s", err)
-				}
-			}
-		}()
-
-		return req.write(c.Conn) // TODO Move the Corking/Uncorking to the write function
+		return n, err
 	}()
 	if err != nil {
 		return err
@@ -285,22 +265,17 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
-			// Make sure header and PDU are sent in one package if possible
-			mtuWriter := bufio.NewWriterSize(conn, 1500) // Ethernet MTU is 1500
-			transactionId, err = c.writeHeader(mtuWriter, pdu)
+			transactionId, err = c.writeHeader(conn, pdu)
 			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
 				return transactionId, err
 			}
-			err = pdu.Write(mtuWriter)
-			if err == nil {
-				err = mtuWriter.Flush()
-			}
+			err = pdu.Write(conn)
 			return transactionId, err
 		},
 		ch: make(chan func(PDU) error),
 	}
-	// Push the request to the sendloop
+	// Push the request to the sendLoop
 	if err := c.enqueueRequest(req); err != nil {
 		// The sendLoop does not run anymore
 		// Build an result chan which errors

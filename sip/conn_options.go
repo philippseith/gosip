@@ -2,15 +2,9 @@ package sip
 
 import (
 	"fmt"
-	"io"
-	"net"
-	"sync"
-
-	"github.com/mikioh/tcp"
-
 	"github.com/cenkalti/backoff/v4"
 	"github.com/joomcode/errorx"
-	"github.com/mikioh/tcpopt"
+	"io"
 )
 
 // ConnOption is option for Conn
@@ -18,14 +12,13 @@ type ConnOption func(c *connOptions) error
 
 type connOptions struct {
 	dial                         func(string, string) (io.ReadWriteCloser, error)
-	cxSetOption                  sync.RWMutex
-	setOption                    func(io.ReadWriteCloser, tcpopt.Option) error
+	cork                         bool
+	mtu                          int
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
 	sendKeepAlive                bool
 	backoffFactory               func() backoff.BackOff
-	writerFactory                func(io.Writer) io.Writer
 }
 
 // WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
@@ -91,44 +84,16 @@ func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption 
 	}
 }
 
-// WithWriter allows to control the way requests are sent to the net.Conn.
-// This can be useful to group request and/or send them at defined points in time.
-func WithWriter(writerFactory func(io.Writer) io.Writer) ConnOption {
-	return func(c *connOptions) error {
-		c.writerFactory = writerFactory
-		return nil
-	}
-}
-
 func WithCorking() ConnOption {
 	return func(c *connOptions) error {
-		c.setSetOption(func(conn io.ReadWriteCloser, option tcpopt.Option) error {
-			netConn, ok := conn.(net.Conn)
-			if !ok {
-				c.setOption = nil
-				return errorx.EnsureStackTrace(fmt.Errorf("%w: conn is not a net.Conn", Error))
-			}
-			rawConn, err := tcp.NewConn(netConn)
-			if err != nil {
-				c.setSetOption(nil)
-				return err
-			}
-			return rawConn.SetOption(option)
-		})
+		c.cork = true
 		return nil
 	}
 }
 
-func (c *connOptions) setSetOption(setOption func(io.ReadWriteCloser, tcpopt.Option) error) {
-	c.cxSetOption.Lock()
-	defer c.cxSetOption.Unlock()
-
-	c.setOption = setOption
-}
-
-func (c *connOptions) getSetOption() func(io.ReadWriteCloser, tcpopt.Option) error {
-	c.cxSetOption.RLock()
-	defer c.cxSetOption.RUnlock()
-
-	return c.setOption
+func WithMTU(mtu int) ConnOption {
+	return func(c *connOptions) error {
+		c.mtu = mtu
+		return nil
+	}
 }

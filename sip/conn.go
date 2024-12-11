@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -124,6 +125,17 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
+
+	if c.cork {
+		c.mtuWriter, err = newCorkWriter(c.Conn, c.mtu)
+		if err != nil {
+			logger.Printf("can not init corking: %v", err)
+		}
+	}
+	if c.mtuWriter == nil {
+		c.mtuWriter = bufio.NewWriterSize(c.Conn, c.mtu)
+	}
+
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
