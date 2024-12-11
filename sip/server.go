@@ -34,7 +34,9 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 			default:
 				conn, err := listener.Accept()
 				if ctx.Err() != nil {
-					conn.Close()
+					if err := conn.Close(); err != nil {
+						logger.Printf("accept, close connection: %+v", err)
+					}
 					return
 				}
 				if err != nil {
@@ -53,10 +55,15 @@ type connServer struct {
 	connOptions
 	conn   net.Conn
 	source SyncClient
+	// TODO Add mtuWriter. Header and Response might be sent in separate datagrams otherwise. Optional: corking
 }
 
 func (c connServer) serve(ctx context.Context) {
-	defer c.conn.Close()
+	defer func() {
+		if err := c.conn.Close(); err != nil {
+			logger.Printf("end serve: %+v", err)
+		}
+	}()
 
 	for {
 		select {
