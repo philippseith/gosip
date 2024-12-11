@@ -109,12 +109,13 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
+			mtu:              1450,
 		},
 		address:       address,
 		timeoutReader: &timeoutReader{reader: netConn},
 
 		reqCh:                make(chan request),
-		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
+		transactionStartedCh: make(chan struct{}, 10000), // Practically infinite queue size, no memory allocation because of struct{} type
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
@@ -126,12 +127,14 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		}
 	}
 
+	// Prepare corking
 	if c.cork {
-		c.mtuWriter, err = newCorkWriter(c.Conn, c.mtu)
+		c.mtuWriter, err = newCorkWriter(c.Conn, c.mtu, c.onFlush)
 		if err != nil {
 			logger.Printf("can not init corking: %v", err)
 		}
 	}
+	// No corking, but make sure header and request are send in one datagram
 	if c.mtuWriter == nil {
 		c.mtuWriter = bufio.NewWriterSize(c.Conn, c.mtu)
 	}

@@ -346,7 +346,7 @@ func parseTryConnectDo[T any](c *client,
 	}
 	err = errors.Join(errs...)
 	if errors.Is(err, ErrorTimeout) || errors.Is(err, context.DeadlineExceeded) {
-		c.Close()
+		err = errors.Join(err, c.Close())
 	}
 	return *new(T), err
 }

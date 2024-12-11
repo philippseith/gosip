@@ -3,12 +3,18 @@ package sip
 import "github.com/joomcode/errorx"
 
 func signal(getChan func() chan struct{}) error {
+	return signalN(getChan, 1)
+}
+
+func signalN(getChan func() chan struct{}, n int) error {
 	ch := getChan()
 
 	if ch == nil {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	ch <- struct{}{}
+	for i := 0; i < n; i++ {
+		ch <- struct{}{}
+	}
 	return nil
 }
 

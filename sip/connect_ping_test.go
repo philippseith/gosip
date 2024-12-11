@@ -45,7 +45,7 @@ func _TestConnectTimeout(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial("tcp", serverAddress, sip.WithCorking())
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()

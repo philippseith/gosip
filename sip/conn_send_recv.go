@@ -25,7 +25,6 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 				return errorx.EnsureStackTrace(context.Cause(ctx))
 			// Get a new request
 			case req, ok := <-c.dequeueRequest():
-				<-time.After(30 * time.Millisecond)
 				if !ok {
 					return errorx.EnsureStackTrace(ErrorClosed)
 				}
@@ -39,10 +38,10 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 					cancel(err)
 					return err
 				}
-				// Inform receiveLoop there's a new transaction initiated
-				if err := signal(c.transactionStarted); err != nil {
-					return err
-				}
+				// TODO REMOVE Inform receiveLoop there's a new transaction initiated
+				//if err := signal(c.transactionStarted); err != nil {
+				//	return err
+				//}
 			}
 		}
 	}()
@@ -114,11 +113,19 @@ func (c *conn) enqueueRequest(req request) error {
 
 // send writes the contents of the request to the net.Conn.
 func (c *conn) send(req request) error {
+	// TODO REMOVE
+	<-time.After(30 * time.Millisecond)
+
 	// The write function of the request is build in sendAndWaitForResponse,
 	// where also the transactionID is set.
 	transactionID, err := func() (uint32, error) {
+
 		n, err := req.write(c.mtuWriter)
-		// if no more requests are there to send, then flush
+
+		// Increase the number of not transmitted requests
+		atomic.AddInt32(&c.sentButNotTransmitted, 1)
+
+		// if no more requests are there to send, flush
 		if atomic.LoadInt32(&c.reqChWaitCount) == 0 {
 			errors.Join(err, c.mtuWriter.Flush())
 		}
@@ -137,6 +144,12 @@ func (c *conn) send(req request) error {
 		c.respChans[transactionID] = req.ch
 	}()
 	return nil
+}
+
+func (c *conn) onFlush() {
+	if err := signalN(c.transactionStarted, int(atomic.SwapInt32(&c.sentButNotTransmitted, 0))); err != nil {
+		logger.Printf("onFlush: %v", err)
+	}
 }
 
 // receiveAndDispatch reads from the net.Conn and dispatches

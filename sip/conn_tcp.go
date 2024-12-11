@@ -14,7 +14,7 @@ import (
 // newCorkWriter creates a bufio.Writer to a net.Conn which initially corks the
 // socket, uncorks it when the writer is flushed and corks it again when the
 // buffer has been written to the net.Conn
-func newCorkWriter(conn io.ReadWriteCloser, mtu int) (*bufio.Writer, error) {
+func newCorkWriter(conn io.ReadWriteCloser, mtu int, onFlush func()) (*bufio.Writer, error) {
 	netConn, ok := conn.(net.Conn)
 	if !ok {
 		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: conn is not a net.Conn", Error))
@@ -27,11 +27,12 @@ func newCorkWriter(conn io.ReadWriteCloser, mtu int) (*bufio.Writer, error) {
 	if err = tcpConn.SetOption(tcpopt.Cork(true)); err != nil {
 		return nil, err
 	}
-	return bufio.NewWriterSize(&flushGuard{tcpConn: tcpConn}, mtu), nil
+	return bufio.NewWriterSize(&flushGuard{tcpConn: tcpConn, onFlush: onFlush}, mtu), nil
 }
 
 type flushGuard struct {
 	tcpConn *tcp.Conn
+	onFlush func()
 }
 
 func (f *flushGuard) Write(p []byte) (n int, err error) {
@@ -44,6 +45,7 @@ func (f *flushGuard) Write(p []byte) (n int, err error) {
 		if err := f.tcpConn.SetOption(tcpopt.Cork(true)); err != nil {
 			logger.Printf("can not cork: %v", err)
 		}
+		f.onFlush()
 	}()
 
 	return f.tcpConn.Write(p)

@@ -3,6 +3,8 @@ package sip_test
 import (
 	"context"
 	"log"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,29 +23,42 @@ func TestClientReconnectLeaseExceeded(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress, sip.WithCorking())
-	// the sequentialized version should be no stress at all
+	c := sip.NewClient("tcp", serverAddress, sip.WithCorking(), sip.WithMTU(1450))
+	// the sequential version should be no stress at all
 	// c := sip.NewClient("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
-	defer c.Close()
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+		c.Close()
+	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
-	tick := time.NewTicker(time.Millisecond * 15)
+	tick := time.NewTicker(time.Millisecond * 5)
+	count := int32(0)
 
 	// This loop may cause TCP ZeroWindows from the drive
 	for {
 		select {
 		case <-tick.C:
 			go func() {
-				_, err := c.ReadOnlyData(0, 0, 1)
-				if err != nil {
-					log.Printf("Error: %v", err)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					wg.Add(1)
+					_, err := c.ReadOnlyData(0, 0, 1)
+					if err != nil {
+						log.Printf("Error: %v", err)
+					}
+					wg.Done()
+					atomic.AddInt32(&count, 1)
 				}
 			}()
 		case <-ctx.Done():
+			log.Printf("count: %v", count)
 			return
 		}
-
 	}
 }
