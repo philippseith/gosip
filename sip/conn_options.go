@@ -2,9 +2,11 @@ package sip
 
 import (
 	"fmt"
+	"io"
+	"time"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/joomcode/errorx"
-	"io"
 )
 
 // ConnOption is option for Conn
@@ -12,8 +14,7 @@ type ConnOption func(c *connOptions) error
 
 type connOptions struct {
 	dial                         func(string, string) (io.ReadWriteCloser, error)
-	cork                         bool
-	mtu                          int
+	corkInterval                 time.Duration
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
@@ -84,16 +85,9 @@ func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption 
 	}
 }
 
-func WithCorking() ConnOption {
+func WithCorking(corkInterval time.Duration) ConnOption {
 	return func(c *connOptions) error {
-		c.cork = true
-		return nil
-	}
-}
-
-func WithMTU(mtu int) ConnOption {
-	return func(c *connOptions) error {
-		c.mtu = mtu
+		c.corkInterval = corkInterval
 		return nil
 	}
 }

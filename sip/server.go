@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -55,7 +56,6 @@ type connServer struct {
 	connOptions
 	conn   net.Conn
 	source SyncClient
-	// TODO Add mtuWriter. Header and Response might be sent in separate datagrams otherwise. Optional: corking
 }
 
 func (c connServer) serve(ctx context.Context) {
@@ -212,9 +212,10 @@ func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser,
 }
 
 func (c connServer) writeWithHeader(pdu PDU, transactionID uint32) error {
+	writer := bufio.NewWriterSize(c.conn, 1460) // TODO Use MSS of socket
 	header := Header{TransactionID: transactionID, MessageType: pdu.MessageType()}
-	if err := header.Write(c.conn); err != nil {
+	if err := header.Write(writer); err != nil {
 		return err
 	}
-	return pdu.Write(c.conn)
+	return errors.Join(pdu.Write(writer), writer.Flush())
 }

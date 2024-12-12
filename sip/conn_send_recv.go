@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -28,9 +29,6 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 				if !ok {
 					return errorx.EnsureStackTrace(ErrorClosed)
 				}
-				//
-				atomic.AddInt32(&c.reqChWaitCount, -1)
-
 				if err := wait(c.transactionAllowed); err != nil {
 					return err
 				}
@@ -38,10 +36,6 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 					cancel(err)
 					return err
 				}
-				// TODO REMOVE Inform receiveLoop there's a new transaction initiated
-				//if err := signal(c.transactionStarted); err != nil {
-				//	return err
-				//}
 			}
 		}
 	}()
@@ -106,29 +100,20 @@ func (c *conn) enqueueRequest(req request) error {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 	// Send request job into the queue of the sendLoop
-	atomic.AddInt32(&c.reqChWaitCount, 1)
 	ch <- req
 	return nil
 }
 
 // send writes the contents of the request to the net.Conn.
 func (c *conn) send(req request) error {
-	// TODO REMOVE
-	<-time.After(30 * time.Millisecond)
-
 	// The write function of the request is build in sendAndWaitForResponse,
 	// where also the transactionID is set.
 	transactionID, err := func() (uint32, error) {
 
-		n, err := req.write(c.mtuWriter)
+		n, err := req.write(c.writer)
 
 		// Increase the number of not transmitted requests
 		atomic.AddInt32(&c.sentButNotTransmitted, 1)
-
-		// if no more requests are there to send, flush
-		if atomic.LoadInt32(&c.reqChWaitCount) == 0 {
-			errors.Join(err, c.mtuWriter.Flush())
-		}
 		return n, err
 	}()
 	if err != nil {
@@ -278,12 +263,14 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
-			transactionId, err = c.writeHeader(conn, pdu)
+			reqWriter := bufio.NewWriterSize(conn, 1460)
+			transactionId, err = c.writeHeader(reqWriter, pdu)
 			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
 				return transactionId, err
 			}
-			err = pdu.Write(conn)
+			err = pdu.Write(reqWriter)
+			err = errors.Join(err, reqWriter.Flush())
 			return transactionId, err
 		},
 		ch: make(chan func(PDU) error),

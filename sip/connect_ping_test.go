@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -45,7 +46,7 @@ func _TestConnectTimeout(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress, sip.WithCorking())
+	conn, err := sip.Dial("tcp", serverAddress, sip.WithCorking(2*time.Millisecond))
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()
