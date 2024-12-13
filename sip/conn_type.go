@@ -31,8 +31,7 @@ type conn struct {
 	mxState sync.RWMutex
 	closed  bool
 
-	writer                io.Writer
-	sentButNotTransmitted int32
+	writer io.Writer
 }
 
 type request struct {

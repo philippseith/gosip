@@ -23,7 +23,7 @@ func TestClientReconnectLeaseExceeded(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress, sip.WithCorking(60*time.Millisecond))
+	c := sip.NewClient("tcp", serverAddress, sip.WithCorking(2*time.Millisecond))
 	// the sequential version should be no stress at all
 	// c := sip.NewClient("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 	var wg sync.WaitGroup

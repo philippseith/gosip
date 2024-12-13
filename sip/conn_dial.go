@@ -55,14 +55,14 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		var corkCtx context.Context
 		corkCtx, c.cancel = context.WithCancelCause(ctx)
 
-		c.writer, err = newCorkWriter(corkCtx, c.Conn, c.corkInterval, c.onFlush)
+		c.writer, err = newCorkWriter(corkCtx, c.Conn, c.corkInterval, c.transactionStarted)
 		if err != nil {
 			logger.Printf("can not init corking: %v", err)
 		}
 	}
 	// No corking, but make sure header and request are send in one datagram
 	if c.writer == nil {
-		c.writer = c.Conn
+		c.writer = newSingleTransactionWriter(c.Conn, c.transactionStarted)
 	}
 
 	// we use userBusy as BusyTimeout until the server responded

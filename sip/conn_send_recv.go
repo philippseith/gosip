@@ -111,9 +111,6 @@ func (c *conn) send(req request) error {
 	transactionID, err := func() (uint32, error) {
 
 		n, err := req.write(c.writer)
-
-		// Increase the number of not transmitted requests
-		atomic.AddInt32(&c.sentButNotTransmitted, 1)
 		return n, err
 	}()
 	if err != nil {
@@ -129,12 +126,6 @@ func (c *conn) send(req request) error {
 		c.respChans[transactionID] = req.ch
 	}()
 	return nil
-}
-
-func (c *conn) onFlush() {
-	if err := signalN(c.transactionStarted, int(atomic.SwapInt32(&c.sentButNotTransmitted, 0))); err != nil {
-		logger.Printf("onFlush: %v", err)
-	}
 }
 
 // receiveAndDispatch reads from the net.Conn and dispatches
