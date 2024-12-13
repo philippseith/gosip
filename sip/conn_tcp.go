@@ -89,10 +89,13 @@ func (fg *flushGuard) Write(p []byte) (n int, err error) {
 }
 
 func (cw *corkWriter) Write(p []byte) (n int, err error) {
-	cw.mx.Lock()
-	defer cw.mx.Unlock()
+	func() {
+		cw.mx.Lock()
+		defer cw.mx.Unlock()
 
-	cw.unflushedMessageCount++
+		cw.unflushedMessageCount++
+	}()
+
 	return cw.bufWriter.Write(p)
 }
 
