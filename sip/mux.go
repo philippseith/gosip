@@ -7,11 +7,11 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-// Mux creates a multiplexer which can be used with multiple Serve calls to forward
+// NewMux creates a multiplexer which can be used with multiple Serve calls to forward
 // the S/IP requests to the underlying source. Reads are optimized by reading only once and
-// broadcasting the response to the listeners of all Serve calls. Mux is useful when the source has
+// broadcasting the response to the listeners of all Serve calls. NewMux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
-func Mux(source SyncClient) SyncClient {
+func NewMux(source SyncClient) SyncClient {
 	return &mux{
 		source: source,
 		jobs:   make(map[muxJob][]chan Result[any]),

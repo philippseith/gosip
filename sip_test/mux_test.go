@@ -8,13 +8,13 @@ import (
 )
 
 func Test_MuxPing(t *testing.T) {
-	mux := sip.Mux(SimpleSyncClient{})
+	mux := sip.NewMux(SimpleSyncClient{})
 	err := mux.Ping()
 	assert.NoError(t, err)
 }
 
 func Test_MuxReadEverything_Same(t *testing.T) {
-	mux := sip.Mux(SimpleSyncClient{})
+	mux := sip.NewMux(SimpleSyncClient{})
 	done := make(chan *sip.ReadEverythingResponse, 2)
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 0)
@@ -33,7 +33,7 @@ func Test_MuxReadEverything_Same(t *testing.T) {
 }
 
 func Test_MuxReadEverything_Different(t *testing.T) {
-	mux := sip.Mux(SimpleSyncClient{})
+	mux := sip.NewMux(SimpleSyncClient{})
 	done := make(chan *sip.ReadEverythingResponse, 2)
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 0)
