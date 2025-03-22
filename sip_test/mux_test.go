@@ -19,13 +19,11 @@ func Test_MuxReadEverything_Same(t *testing.T) {
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 0)
 		assert.NoError(t, err)
-		assert.Equal(t, sip.ReadEverythingResponse{}, response)
 		done <- &response
 	}()
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 0)
 		assert.NoError(t, err)
-		assert.Equal(t, sip.ReadEverythingResponse{}, response)
 		done <- &response
 	}()
 
@@ -40,17 +38,15 @@ func Test_MuxReadEverything_Different(t *testing.T) {
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 0)
 		assert.NoError(t, err)
-		assert.Equal(t, sip.ReadEverythingResponse{}, response)
 		done <- &response
 	}()
 	go func() {
 		response, err := mux.ReadEverything(0, 0, 1)
 		assert.NoError(t, err)
-		assert.Equal(t, sip.ReadEverythingResponse{}, response)
 		done <- &response
 	}()
 
 	r1 := <-done
 	r2 := <-done
-	assert.Equal(t, r1, r2)
+	assert.NotEqual(t, r1, r2)
 }

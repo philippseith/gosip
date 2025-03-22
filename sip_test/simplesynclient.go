@@ -2,6 +2,7 @@ package sip_test
 
 import (
 	"crypto/rand"
+	"fmt"
 
 	"github.com/philippseith/gosip/sip"
 )
@@ -16,6 +17,7 @@ func (s SimpleSyncClient) Ping(options ...sip.RequestOption) error {
 func (s SimpleSyncClient) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...sip.RequestOption) (sip.ReadEverythingResponse, error) {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
+	fmt.Printf("ReadEverything: %v\n", buf)
 	return sip.ReadEverythingResponse{
 		Data: buf,
 	}, nil
