@@ -7,7 +7,7 @@ linters:
     - cyclop
     - dupl
     - errorlint
-    - exportloopref
+    - copyloopvar
     - funlen
     - gocritic
     - gocognit
