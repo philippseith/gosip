@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -79,6 +80,8 @@ type flushGuard struct {
 func (fg *flushGuard) Write(p []byte) (n int, err error) {
 	fg.cw.mx.Lock()
 	defer fg.cw.mx.Unlock()
+
+	log.Printf("flushed %v", len(p))
 
 	if err := signalN(fg.transactionStarted, fg.cw.unflushedMessageCount); err != nil {
 		logger.Printf("can not signal transaction started: %v", errorx.EnsureStackTrace(err))

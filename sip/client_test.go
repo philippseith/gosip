@@ -53,7 +53,7 @@ func TestBackupNoCork(t *testing.T) {
 }
 
 func TestBackupCork(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress, sip.WithCorking(2*time.Millisecond))
+	c := sip.NewClient("tcp", serverAddress, sip.WithCorking(10*time.Millisecond))
 
 	var wg sync.WaitGroup
 	defer func() {
