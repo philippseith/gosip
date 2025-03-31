@@ -178,7 +178,7 @@ func (c connServer) handleWriteData(transactionID uint32) error {
 	err := c.source.WriteData(int(req.SlaveIndex), int(req.SlaveExtension), req.IDN, req.Data)
 	ex := Exception{}
 	if errors.As(err, &ex) {
-		return ex.Write(c.conn)
+		return c.writeWithHeader(&ex, transactionID)
 	}
 	if err == nil {
 		resp := &WriteDataResponse{}
@@ -197,7 +197,7 @@ func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser,
 	resp, err := read(req.SlaveIndex, req.SlaveExtension, req.IDN)
 	ex := Exception{}
 	if errors.As(err, &ex) {
-		return ex.Write(c.conn)
+		return c.writeWithHeader(&ex, transactionID)
 	}
 	if err == nil {
 		return c.writeWithHeader(resp, transactionID)
