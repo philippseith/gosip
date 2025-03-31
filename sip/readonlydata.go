@@ -33,6 +33,14 @@ func (r *ReadOnlyDataRequest) MessageType() MessageType {
 	return ReadOnlyDataRequestMsgType
 }
 
+func (r *ReadOnlyDataRequest) Target() Request {
+	return Request{
+		r.SlaveIndex,
+		r.SlaveExtension,
+		r.IDN,
+	}
+}
+
 type ReadOnlyDataResponse struct {
 	readOnlyDataResponse
 	Data []byte

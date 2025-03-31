@@ -33,6 +33,14 @@ func (r *ReadDescriptionRequest) MessageType() MessageType {
 	return ReadDescriptionRequestMsgType
 }
 
+func (r *ReadDescriptionRequest) Target() Request {
+	return Request{
+		r.SlaveIndex,
+		r.SlaveExtension,
+		r.IDN,
+	}
+}
+
 type ReadDescriptionResponse struct {
 	readDescriptionResponse
 	Name []byte

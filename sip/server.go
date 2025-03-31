@@ -136,7 +136,7 @@ func (c connServer) handlePing(transactionID uint32) error {
 
 func (c connServer) handleDataState(transactionID uint32) error {
 	req := ReadDataStateRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadDataState(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -145,7 +145,7 @@ func (c connServer) handleDataState(transactionID uint32) error {
 
 func (c connServer) handleDescription(transactionID uint32) error {
 	req := ReadDescriptionRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadDescription(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -154,7 +154,7 @@ func (c connServer) handleDescription(transactionID uint32) error {
 
 func (c connServer) handleReadEverything(transactionID uint32) error {
 	req := ReadEverythingRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadEverything(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -163,7 +163,7 @@ func (c connServer) handleReadEverything(transactionID uint32) error {
 
 func (c connServer) handleReadOnlyData(transactionID uint32) error {
 	req := ReadOnlyDataRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadOnlyData(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -187,12 +187,13 @@ func (c connServer) handleWriteData(transactionID uint32) error {
 	return err
 }
 
-func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser, reqPDU PDU,
-	req Request, read func(uint16, uint16, uint32) (PDU, error), transactionID uint32) error {
+func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser, reqPDU RequestPDU,
+	read func(uint16, uint16, uint32) (PDU, error), transactionID uint32) error {
 	err := reqPDU.Read(conn)
 	if err != nil {
 		return err
 	}
+	req := reqPDU.Target()
 	resp, err := read(req.SlaveIndex, req.SlaveExtension, req.IDN)
 	ex := Exception{}
 	if errors.As(err, &ex) {

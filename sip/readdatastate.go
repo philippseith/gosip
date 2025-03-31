@@ -33,6 +33,14 @@ func (r *ReadDataStateRequest) MessageType() MessageType {
 	return ReadDataStateRequestMsgType
 }
 
+func (r *ReadDataStateRequest) Target() Request {
+	return Request{
+		r.SlaveIndex,
+		r.SlaveExtension,
+		r.IDN,
+	}
+}
+
 type ReadDataStateResponse struct {
 	DataState uint16
 }

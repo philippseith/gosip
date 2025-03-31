@@ -27,6 +27,14 @@ func (r *ReadEverythingRequest) MessageType() MessageType {
 	return ReadEverythingRequestMsgType
 }
 
+func (r *ReadEverythingRequest) Target() Request {
+	return Request{
+		r.SlaveIndex,
+		r.SlaveExtension,
+		r.IDN,
+	}
+}
+
 type ReadEverythingResponse struct {
 	readEverythingResponse
 	Name []byte

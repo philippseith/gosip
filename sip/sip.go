@@ -27,6 +27,11 @@ type PDU interface {
 	MessageType() MessageType
 }
 
+type RequestPDU interface {
+	PDU
+	Target() Request
+}
+
 // Request is the address part of a PDU
 type Request struct {
 	SlaveIndex     uint16
