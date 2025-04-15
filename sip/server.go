@@ -67,7 +67,10 @@ func (c connServer) serve(ctx context.Context) {
 				return
 			}
 			if err := c.handleMessages(); err != nil {
-				logger.Printf("%v: %+v", c.conn.RemoteAddr(), err)
+				if !errors.Is(err, io.EOF) {
+					// EOF is expected when the client closes the connection, everything else should be logged
+					logger.Printf("%v: %+v", c.conn.RemoteAddr(), err)
+				}
 				return
 			}
 		}
