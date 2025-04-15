@@ -1,24 +1,39 @@
+version: "2"
 run:
   tests: false
 linters:
   enable:
     - asasalint
     - contextcheck
+    - copyloopvar
     - cyclop
     - dupl
     - errorlint
-    - copyloopvar
     - funlen
-    - gocritic
     - gocognit
+    - gocritic
     - gocyclo
     - gosec
-    - govet
-    - gosimple
-    - staticcheck
-    - unused
     - prealloc
     - revive
     - unconvert
     - unparam
     - usestdlibvars
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

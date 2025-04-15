@@ -201,30 +201,30 @@ func (c *conn) MessageTypes() []uint32 {
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	return sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{})
+	return sendRequestWaitForResponseAndRead(ctx, c, &PingRequest{}, &PingResponse{})
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
@@ -240,7 +240,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 	if len(data) > 0xFFFF {
 		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
 	}
-	err := sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
+	err := sendRequestWaitForResponseAndRead(ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			Request: Request{
 				SlaveIndex:     u16slaveIndex,

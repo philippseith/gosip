@@ -209,38 +209,38 @@ func (c *client) MessageTypes() []uint32 {
 }
 
 func (c *client) Ping(options ...RequestOption) error {
-	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
+	_, err := parseTryConnectDo(c, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, c.Conn().Ping(ctx)
 	}, options...)
 	return err
 }
 
 func (c *client) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadEverythingResponse, error) {
-	return parseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
+	return parseTryConnectDo(c, func(ctx context.Context) (ReadEverythingResponse, error) {
 		return c.Conn().ReadEverything(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadOnlyDataResponse, error) {
-	return parseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
+	return parseTryConnectDo(c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
 		return c.Conn().ReadOnlyData(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDescriptionResponse, error) {
-	return parseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
+	return parseTryConnectDo(c, func(ctx context.Context) (ReadDescriptionResponse, error) {
 		return c.Conn().ReadDescription(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error) {
-	return parseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
+	return parseTryConnectDo(c, func(ctx context.Context) (ReadDataStateResponse, error) {
 		return c.Conn().ReadDataState(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error {
-	_, err := parseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
+	_, err := parseTryConnectDo(c, func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, c.Conn().WriteData(ctx, slaveIndex, slaveExtension, idn, data)
 	}, options...)
 	return err
@@ -254,25 +254,25 @@ func (c *client) GoPing(options ...RequestOption) <-chan error {
 }
 
 func (c *client) GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse] {
-	return goParseTryConnectDo[ReadEverythingResponse](c, func(ctx context.Context) (ReadEverythingResponse, error) {
+	return goParseTryConnectDo(c, func(ctx context.Context) (ReadEverythingResponse, error) {
 		return c.Conn().ReadEverything(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse] {
-	return goParseTryConnectDo[ReadOnlyDataResponse](c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
+	return goParseTryConnectDo(c, func(ctx context.Context) (ReadOnlyDataResponse, error) {
 		return c.Conn().ReadOnlyData(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse] {
-	return goParseTryConnectDo[ReadDescriptionResponse](c, func(ctx context.Context) (ReadDescriptionResponse, error) {
+	return goParseTryConnectDo(c, func(ctx context.Context) (ReadDescriptionResponse, error) {
 		return c.Conn().ReadDescription(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
 
 func (c *client) GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse] {
-	return goParseTryConnectDo[ReadDataStateResponse](c, func(ctx context.Context) (ReadDataStateResponse, error) {
+	return goParseTryConnectDo(c, func(ctx context.Context) (ReadDataStateResponse, error) {
 		return c.Conn().ReadDataState(ctx, slaveIndex, slaveExtension, idn)
 	}, options...)
 }
@@ -293,8 +293,8 @@ func (c *client) Close() error {
 }
 
 func goParseTryConnectDoWithErrChan(c *client, do func(context.Context) error, options ...RequestOption) <-chan error {
-	return mapChan[Result[struct{}], error](
-		goParseTryConnectDo[struct{}](c, func(ctx context.Context) (struct{}, error) {
+	return mapChan(
+		goParseTryConnectDo(c, func(ctx context.Context) (struct{}, error) {
 			return struct{}{}, do(ctx)
 		}, options...),
 		func(r Result[struct{}]) error {
