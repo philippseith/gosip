@@ -39,7 +39,16 @@ type Request struct {
 	IDN            uint32
 }
 
-var logger = log.New(os.Stderr, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
+var logger = log.New(io.Discard, "sip: ", log.Ldate|log.Lmicroseconds|log.Lmsgprefix)
+
+// EnableLogging sets the logger output to os.Stderr if enable is true, otherwise it discards the log output
+func EnableLogging(enable bool) {
+	if enable {
+		logger.SetOutput(os.Stderr)
+	} else {
+		logger.SetOutput(io.Discard)
+	}
+}
 
 // Constants for the validElements field in ReadDescriptionResponse and ReadEverythingResponse
 const (
