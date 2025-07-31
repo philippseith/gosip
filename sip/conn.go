@@ -71,7 +71,7 @@ type ConnProperties interface {
 
 // Dial opens a Conn and connects it.
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	c, err := dial(context.Background(), network, address, options...)
+	c, err := dial(network, address, options...)
 	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
 	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
 	if c == nil {
@@ -80,7 +80,7 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	return c, err
 }
 
-func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
+func dial(network, address string, options ...ConnOption) (*conn, error) {
 	// Check for WithConnnection option
 	wcOpts := &connOptions{}
 	for _, option := range options {
@@ -88,17 +88,21 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
+	if wcOpts.dialCtx == nil {
+		wcOpts.dialCtx = context.Background()
+	}
 	// Fallback to net.Dial
 	if wcOpts.dial == nil {
-		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
-			netConn, err := net.Dial(network, address)
+		wcOpts.dial = func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+			var dialer net.Dialer
+			netConn, err := dialer.DialContext(ctx, network, address)
 			if err != nil {
 				err = errorx.EnsureStackTrace(err)
 			}
 			return netConn, err
 		}
 	}
-	netConn, err := wcOpts.dial(network, address)
+	netConn, err := wcOpts.dial(wcOpts.dialCtx, network, address)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +131,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	sendRecvCtx, cancel := context.WithCancelCause(ctx)
+	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
 
 	go c.sendLoop(sendRecvCtx, cancel)
 	go c.receiveLoop(sendRecvCtx, cancel)
@@ -137,7 +141,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 		c.setClosed()
 	}()
 
-	return c, c.connect(ctx)
+	return c, c.connect(wcOpts.dialCtx)
 }
 
 func (c *conn) Close() error {

@@ -1,6 +1,7 @@
 package sip
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -12,13 +13,23 @@ import (
 type ConnOption func(c *connOptions) error
 
 type connOptions struct {
-	dial                         func(string, string) (io.ReadWriteCloser, error)
+	dial                         func(context.Context, string, string) (io.ReadWriteCloser, error)
+	dialCtx                      context.Context
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
 	sendKeepAlive                bool
 	backoffFactory               func() backoff.BackOff
 	writerFactory                func(io.Writer) io.Writer
+}
+
+// WithDialContext sets the context for the dial function. This context is not used after the connection is established
+// and is only used for the initial dial. If not set, the default context.Background() is used.
+func WithDialContext(ctx context.Context) ConnOption {
+	return func(c *connOptions) error {
+		c.dialCtx = ctx
+		return nil
+	}
 }
 
 // WithBusyTimeout sets the BusyTimeout to negotiate with the server in ms. Default is 2000ms.
@@ -77,7 +88,7 @@ func WithMeasureNetworkLatencyICMP() ConnOption {
 // WithDial surpasses the net.Conn from the Dial function.
 // This option can be used for testing, logging, middleware purposes in general,
 // or exotic connection types.
-func WithDial(dial func(string, string) (io.ReadWriteCloser, error)) ConnOption {
+func WithDial(dial func(context.Context, string, string) (io.ReadWriteCloser, error)) ConnOption {
 	return func(c *connOptions) error {
 		c.dial = dial
 		return nil
