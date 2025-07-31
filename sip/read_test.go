@@ -144,7 +144,7 @@ func TestReadS192(t *testing.T) {
 
 	defer measureTime("")()
 
-	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1789)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 192)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, resp.DataLength)

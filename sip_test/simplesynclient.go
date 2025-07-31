@@ -3,6 +3,7 @@ package sip_test
 import (
 	"crypto/rand"
 	"fmt"
+	"time"
 
 	"github.com/philippseith/gosip/sip"
 )
@@ -15,6 +16,7 @@ func (s SimpleSyncClient) Ping(...sip.RequestOption) error {
 }
 
 func (s SimpleSyncClient) ReadEverything(_, _ int, _ uint32, _ ...sip.RequestOption) (sip.ReadEverythingResponse, error) {
+	<-time.After(10 * time.Millisecond) // Simulate some delay
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 	fmt.Printf("ReadEverything: %v\n", buf)

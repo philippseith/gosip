@@ -17,7 +17,7 @@ func TestSmoke(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sip.Serve(ctx, l, source, sip.WithBusyTimeout(2001), sip.WithLeaseTimeout(10001))
 
-	sipConn, err := sip.Dial("", "", sip.WithDial(func(network, address string) (io.ReadWriteCloser, error) {
+	sipConn, err := sip.Dial("", "", sip.WithDial(func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
 		return l.Dial(network, address)
 	}))
 	assert.NoError(t, err)

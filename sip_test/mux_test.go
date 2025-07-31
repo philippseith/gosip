@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ func Test_MuxPing(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_MuxReadEverything_Same(t *testing.T) {
+func Test_MuxReadEverything_Same_Parallel(t *testing.T) {
 	mux := sip.NewMux(SimpleSyncClient{})
 	done := make(chan *sip.ReadEverythingResponse, 2)
 	go func() {
@@ -34,7 +35,27 @@ func Test_MuxReadEverything_Same(t *testing.T) {
 	assert.Equal(t, r1, r2)
 }
 
-func Test_MuxReadEverything_Different(t *testing.T) {
+func Test_MuxReadEverything_Different_Sequential(t *testing.T) {
+	mux := sip.NewMux(SimpleSyncClient{})
+	done := make(chan *sip.ReadEverythingResponse, 2)
+	go func() {
+		response, err := mux.ReadEverything(0, 0, 0)
+		assert.NoError(t, err)
+		done <- &response
+	}()
+	go func() {
+		<-time.After(200 * time.Millisecond) // Simulate some delay
+		response, err := mux.ReadEverything(0, 0, 0)
+		assert.NoError(t, err)
+		done <- &response
+	}()
+
+	r1 := <-done
+	r2 := <-done
+	assert.NotEqual(t, r1, r2)
+}
+
+func Test_MuxReadEverything_Different_Idns(t *testing.T) {
 	mux := sip.NewMux(SimpleSyncClient{})
 	done := make(chan *sip.ReadEverythingResponse, 2)
 	go func() {
