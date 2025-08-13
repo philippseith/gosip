@@ -11,42 +11,6 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-func newUDPConn(ip net.IP) (*net.UDPConn, error) {
-	listenAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:0", ip.String()))
-	if err != nil {
-		return nil, errorx.EnsureStackTrace(err)
-	}
-	return net.ListenUDP("udp4", listenAddr)
-}
-
-func sendUDP(conn net.PacketConn, address string, pdu PDU) error {
-	writer := bytes.NewBuffer(make([]byte, 0, 17))
-	// Write header to buffer
-	hdr := Header{
-		TransactionID: 1,
-		MessageType:   BrowseRequestMsgType,
-	}
-	err := hdr.Write(writer)
-	if err != nil {
-		return err
-	}
-	err = pdu.Write(writer)
-	if err != nil {
-		return err
-	}
-	// Create target address
-	targetAddr, err := net.ResolveUDPAddr("udp4", address+":35021")
-	if err != nil {
-		return errorx.EnsureStackTrace(err)
-	}
-	// Send the request
-	_, err = conn.WriteTo(writer.Bytes(), targetAddr)
-	if err != nil {
-		return errorx.EnsureStackTrace(err)
-	}
-	return nil
-}
-
 func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse func() T, ch chan<- Result[T]) bool {
 	err := conn.SetReadDeadline(time.Now().Add(timeout))
 	if err != nil {

@@ -1,9 +1,9 @@
 package sip
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,30 +13,47 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-// ListenToBrowseResponses listens on interfaceName for BrowseResponses until ctx is canceled.
-// It automatically reserves a free port for listening.
-// The returned net.PacketConn should be used to send BrowseRequests on the listened port.
-// The channel returns any valid BrowseResponse that is received, all errors occured while parsing received packages
-// and all errors with the net.PacketConn. The connection and the channel are closed in case of errors of the latter category.
-func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.PacketConn, <-chan Result[*BrowseResponse], error) {
-	conns, err := connsForInterface(interfaceName)
+// Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
+// The Listening ends when ctx is canceled.
+func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseResponse], error) {
+
+	reqConns, err := getReqConnsForIfc(interfaceName)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+
+	browseRequest, err := buildBrowseRequest()
+	if err != nil {
+		return nil, err
 	}
 
 	ch := make(chan Result[*BrowseResponse], 512) // Such many devices should be a pretty uncommon case
 	var wg sync.WaitGroup
 
-	for _, conn := range conns {
+	for _, reqConn := range reqConns {
 		wg.Add(1)
 
-		go func(conn net.PacketConn) {
-			defer func() {
-				wg.Done()
-				if conn != nil {
-					_ = conn.Close()
-				}
-			}()
+		go func() {
+			defer wg.Done()
+
+			localPort := reqConn.LocalAddr().(*net.UDPAddr).Port
+			_, err := reqConn.Write(browseRequest)
+			if err != nil {
+				ch <- Err[*BrowseResponse](errorx.EnsureStackTrace(err))
+				return
+			}
+			// The drives are responding on our local port but with the broadcast address.
+			// To allow listening on the port, we need to close the sending connection
+			// and open a new one for listening.
+			reqConn.Close()
+
+			listenAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
+			respConn, err := net.ListenUDP("udp", listenAddr)
+			if err != nil {
+				ch <- Err[*BrowseResponse](errorx.EnsureStackTrace(err))
+				return
+			}
+			defer respConn.Close()
 
 			for {
 				select {
@@ -44,14 +61,15 @@ func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.P
 					return
 				default:
 					// Blocks until a reponse comes in or a 1 sec timeout elapses
-					if !listenUDP(conn, time.Second, func() *BrowseResponse {
+					if !listenUDP(respConn, time.Second, func() *BrowseResponse {
 						return &BrowseResponse{}
 					}, ch) {
 						return
 					}
 				}
 			}
-		}(conn)
+
+		}()
 	}
 
 	go func() {
@@ -59,79 +77,15 @@ func ListenToBrowseResponses(ctx context.Context, interfaceName string) ([]net.P
 		close(ch)
 	}()
 
-	return conns, ch, nil
+	return ch, nil
 }
 
-// BroadcastBrowseRequest broadcasts a BrowseRequest on the passed net.PacketConn from ListenToBrowseResponses.
-// Note that the net.PacketConn will be closed when ListenToBrowseResponses is canceled.
-func BroadcastBrowseRequest(conn net.PacketConn) error {
-	return sendBrowseRequest(conn, "255.255.255.255")
-}
-
-// SendBrowseRequest sends a BrowseRequest on the passed net.PacketConn to a dedicated IP address.
-func SendBrowseRequest(conn net.PacketConn, address string) error {
-	if net.ParseIP(address) == nil {
-		return errorx.EnsureStackTrace(fmt.Errorf("%w: %s is not a valid IP address", Error, address))
-	}
-	return sendBrowseRequest(conn, address)
-}
-
-func sendBrowseRequest(conn net.PacketConn, address string) error {
-	udpAddr, ok := conn.LocalAddr().(*net.UDPAddr)
-	if !ok {
-		return errorx.EnsureStackTrace(fmt.Errorf("%w: can not convert to net.UDPAddr: %s", Error, conn.LocalAddr().String()))
-	}
-	req := &BrowseRequest{
-		IPAddress:          [4]byte(udpAddr.IP.To4()),
-		MasterOnly:         false,
-		LowerSercosAddress: 0,
-		UpperSercosAddress: 511,
-	}
-	return sendUDP(conn, address, req)
-}
-
-// Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
-// The Listening ends when ctx is canceled.
-func Browse(ctx context.Context, interfaceName string) (<-chan Result[*BrowseResponse], error) {
-	conns, ch, err := ListenToBrowseResponses(ctx, interfaceName)
-	if err != nil {
-		return nil, err
-	}
-
-	var allErr error
-	for _, conn := range conns {
-		allErr = errors.Join(allErr, BroadcastBrowseRequest(conn))
-	}
-	return ch, allErr
-}
-
-func connsForInterface(interfaceName string) ([]net.PacketConn, error) {
-	ips, err := findIPV4OfInterface(interfaceName)
-	if err != nil {
-		return nil, err
-	}
-
-	var allErr error
-	conns := make([]net.PacketConn, 0, len(ips))
-	for _, ip := range ips {
-
-		conn, err := newUDPConn(ip)
-		if err != nil {
-			allErr = errors.Join(allErr, err)
-			continue
-		}
-
-		conns = append(conns, conn)
-	}
-	return conns, allErr
-}
-
-func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
+func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error) {
 	ifcs, err := net.Interfaces()
 	if err != nil {
 		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
 	}
-	var ipV4s []net.IP
+
 	for _, ifc := range ifcs {
 		if ifc.Name != interfaceName {
 			continue
@@ -141,19 +95,66 @@ func findIPV4OfInterface(interfaceName string) ([]net.IP, error) {
 			return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read addresses of interface %s: %w", Error, interfaceName, err))
 		}
 		for _, addr := range addrs {
-			ipAddr, ok := addr.(*net.IPNet)
-			if !ok {
+			reqConn, err := addrToReqConn(addr)
+			if err != nil {
+				return nil, err
+			}
+			if reqConn == nil {
 				continue
 			}
-			if ipAddr.IP.To4() != nil {
-				ipV4s = append(ipV4s, ipAddr.IP)
-			}
+			reqConns = append(reqConns, reqConn)
 		}
 	}
-	if len(ipV4s) == 0 {
-		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can find IP for interface %s: %w", Error, interfaceName, err))
+
+	if len(reqConns) == 0 {
+		return nil, errorx.EnsureStackTrace(fmt.Errorf("interface %s has no ipv4 addresses", interfaceName))
 	}
-	return ipV4s, nil
+	return reqConns, nil
+}
+
+func addrToReqConn(addr net.Addr) (*net.UDPConn, error) {
+	ipAddr, ok := addr.(*net.IPNet)
+	if !ok {
+		return nil, nil
+	}
+	ip := ipAddr.IP.To4()
+	if ip == nil {
+		return nil, nil
+	}
+	mask := ipAddr.Mask
+	broadcast := make(net.IP, 4)
+	for i := range 4 {
+		broadcast[i] = ip[i] | ^mask[i]
+	}
+	localAddr := &net.UDPAddr{IP: ip, Port: 0}
+	broadcastAddr := &net.UDPAddr{IP: broadcast, Port: 35021}
+
+	reqConn, err := net.DialUDP("udp", localAddr, broadcastAddr)
+	if err != nil {
+		return nil, errorx.EnsureStackTrace(err)
+	}
+	return reqConn, nil
+}
+
+func buildBrowseRequest() ([]byte, error) {
+	writer := bytes.NewBuffer(make([]byte, 0, 17))
+	br := BrowseRequest{
+		IPAddress:          [4]byte(net.IPv4bcast),
+		MasterOnly:         false,
+		LowerSercosAddress: 0,
+		UpperSercosAddress: 511,
+	}
+	hdr := Header{
+		TransactionID: 1,
+		MessageType:   br.MessageType(),
+	}
+	if err := hdr.Write(writer); err != nil {
+		return nil, errorx.EnsureStackTrace(err)
+	}
+	if err := br.Write(writer); err != nil {
+		return nil, errorx.EnsureStackTrace(err)
+	}
+	return writer.Bytes(), nil
 }
 
 type BrowseRequest struct {

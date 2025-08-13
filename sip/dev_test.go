@@ -3,15 +3,17 @@ package sip
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func _TestUDP(t *testing.T) {
-	pc, err := net.ListenPacket("udp4", "192.168.2.81:35021")
+	pc, err := net.ListenPacket("udp4", "192.168.112.74:35021")
 
 	assert.NoError(t, err)
 
@@ -23,7 +25,7 @@ func _TestUDP(t *testing.T) {
 
 	writer := bytes.NewBuffer(make([]byte, 0, 17))
 	br := BrowseRequest{
-		IPAddress:          [4]byte(net.ParseIP("127.128.129.130").To4()),
+		IPAddress:          [4]byte(net.ParseIP("255.255.255.255").To4()),
 		MasterOnly:         false,
 		LowerSercosAddress: 0,
 		UpperSercosAddress: 511,
@@ -35,6 +37,56 @@ func _TestUDP(t *testing.T) {
 	hdr.Write(writer)
 	br.Write(writer)
 	pc.WriteTo(writer.Bytes(), addr)
+}
+
+func _TestBroadcast(t *testing.T) {
+
+	broadcastAddr := "192.168.112.255:35021"
+	localAddr := &net.UDPAddr{IP: net.ParseIP("192.168.112.74"), Port: 0}
+
+	broadcastUDPAddr, err := net.ResolveUDPAddr("udp", broadcastAddr)
+	// Listen on UDP port 35021 for all interfaces
+	sender, err := net.DialUDP("udp", localAddr, broadcastUDPAddr)
+	assert.NoError(t, err)
+
+	writer := bytes.NewBuffer(make([]byte, 0, 17))
+	br := BrowseRequest{
+		IPAddress:          [4]byte(net.ParseIP("255.255.255.255").To4()),
+		MasterOnly:         false,
+		LowerSercosAddress: 0,
+		UpperSercosAddress: 511,
+	}
+	hdr := Header{
+		TransactionID: 1,
+		MessageType:   br.MessageType(),
+	}
+	hdr.Write(writer)
+	br.Write(writer)
+
+	_, err = sender.Write(writer.Bytes())
+	assert.NoError(t, err)
+
+	sender.Close()
+
+	// Listen for responses on all interfaces (receive broadcasts and unicasts)
+	localPort := sender.LocalAddr().(*net.UDPAddr).Port
+	listenAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
+	listener, err := net.ListenUDP("udp", listenAddr)
+	if err != nil {
+		panic(err)
+	}
+	defer listener.Close()
+
+	listener.SetReadDeadline(time.Now().Add(5 * time.Second)) // Timeout
+	buf2 := make([]byte, 2048)
+	for {
+		n, src, err := listener.ReadFromUDP(buf2)
+		if err != nil {
+			fmt.Println("Done listening (timeout or error):", err)
+			break
+		}
+		fmt.Printf("Received %d bytes from %s: %s\n", n, src, string(buf2[:n]))
+	}
 }
 
 func TestDecode(t *testing.T) {
