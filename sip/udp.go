@@ -34,13 +34,13 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 	reader := bytes.NewReader(buf[:n])
 	hdr := Header{}
 	err = hdr.Read(reader)
-	if err != nil || hdr.MessageType != BrowseResponseMsgType {
+	if err != nil || hdr.MessageType != newResponse().MessageType() {
 		return true
 	}
 	resp := newResponse()
 	err = resp.Read(reader)
 	if err == nil {
-		ch <- Ok[T](resp)
+		ch <- Ok(resp)
 	} else {
 		ch <- Err[T](errorx.EnsureStackTrace(fmt.Errorf(
 			"%w: Can not parse packet %v: %w", Error, buf[:n], err)))

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/joomcode/errorx"
@@ -17,67 +16,22 @@ import (
 // The Listening ends when ctx is canceled.
 func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseResponse], error) {
 
-	reqConns, err := getReqConnsForIfc(interfaceName)
-	if err != nil {
-		return nil, err
-	}
-
 	browseRequest, err := buildBrowseRequest()
 	if err != nil {
 		return nil, err
 	}
 
-	ch := make(chan Result[*BrowseResponse], 512) // Such many devices should be a pretty uncommon case
-	var wg sync.WaitGroup
-
-	for _, reqConn := range reqConns {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			localPort := reqConn.LocalAddr().(*net.UDPAddr).Port
-			_, err := reqConn.Write(browseRequest)
-			if err != nil {
-				ch <- Err[*BrowseResponse](errorx.EnsureStackTrace(err))
-				return
-			}
-			// The drives are responding on our local port but with the broadcast address.
-			// To allow listening on the port, we need to close the sending connection
-			// and open a new one for listening.
-			reqConn.Close()
-
-			listenAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
-			respConn, err := net.ListenUDP("udp", listenAddr)
-			if err != nil {
-				ch <- Err[*BrowseResponse](errorx.EnsureStackTrace(err))
-				return
-			}
-			defer respConn.Close()
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					// Blocks until a reponse comes in or a 1 sec timeout elapses
-					if !listenUDP(respConn, time.Second, func() *BrowseResponse {
-						return &BrowseResponse{}
-					}, ch) {
-						return
-					}
-				}
-			}
-
-		}()
+	reqConns, err := getReqConnsForIfc(interfaceName)
+	if err != nil {
+		return nil, err
 	}
 
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
-	return ch, nil
+	return broadcast(ctx, reqConns, browseRequest,
+		func(conn *net.UDPConn, ch chan<- Result[*BrowseResponse]) bool {
+			return listenUDP(conn, time.Second, func() *BrowseResponse {
+				return &BrowseResponse{}
+			}, ch)
+		})
 }
 
 func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error) {
