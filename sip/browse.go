@@ -31,7 +31,7 @@ func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseRespo
 			return listenUDP(conn, time.Second, func() *BrowseResponse {
 				return &BrowseResponse{}
 			}, ch)
-		})
+		}), nil
 }
 
 func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error) {

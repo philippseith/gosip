@@ -8,7 +8,7 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-func broadcast[TResp any](ctx context.Context, conns []*net.UDPConn, request []byte, listen func(*net.UDPConn, chan<- Result[*TResp]) bool) (chan Result[*TResp], error) {
+func broadcast[TResp any](ctx context.Context, conns []*net.UDPConn, request []byte, listen func(*net.UDPConn, chan<- Result[*TResp]) bool) chan Result[*TResp] {
 
 	ch := make(chan Result[*TResp], 512) // Such many devices should be a pretty uncommon case
 	var wg sync.WaitGroup
@@ -58,5 +58,5 @@ func broadcast[TResp any](ctx context.Context, conns []*net.UDPConn, request []b
 		close(ch)
 	}()
 
-	return ch, nil
+	return ch
 }

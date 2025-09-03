@@ -56,7 +56,7 @@ func Identify(ctx context.Context, interfaceName string, nodeIdentifier [6]byte)
 			return listenUDP(conn, 1*time.Second, func() *IdentifyResponse {
 				return &IdentifyResponse{}
 			}, ch)
-		})
+		}), nil
 }
 
 type IdentifyRequest struct {
