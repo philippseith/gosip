@@ -369,17 +369,17 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		return errorx.EnsureStackTrace(ctx.Err())
 	}
 
-	cc := c.Conn()
-	if cc != nil && !cc.Connected() {
-		logger.Printf("%s: tryConnect: connected: %v", c.address, cc.Connected())
-	} else if cc == nil {
+	if conn := c.Conn(); conn != nil {
+		logger.Printf("%s: tryConnect: connected: %v", c.address, conn.Connected())
+		if conn.Connected() &&
+			time.Since(conn.LastReceived()) < conn.LeaseTimeout() {
+			return nil
+		}
+		conn.Close()
+		conn = nil
+		logger.Printf("%s tryConnect: closed conn", c.address)
+	} else {
 		logger.Printf("%s: tryConnect: conn nil", c.address)
-	}
-
-	if conn := c.Conn(); conn != nil &&
-		conn.Connected() &&
-		time.Since(conn.LastReceived()) < conn.LeaseTimeout() {
-		return nil
 	}
 
 	if c.backOff == nil {

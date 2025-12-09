@@ -131,10 +131,11 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+	var sendRecvCtx context.Context
+	sendRecvCtx, c.cancel = context.WithCancelCause(context.Background())
 
-	go c.sendLoop(sendRecvCtx, cancel)
-	go c.receiveLoop(sendRecvCtx, cancel)
+	go c.sendLoop(sendRecvCtx, c.cancel)
+	go c.receiveLoop(sendRecvCtx, c.cancel)
 	go func() {
 		<-sendRecvCtx.Done()
 		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))

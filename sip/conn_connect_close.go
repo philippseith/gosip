@@ -85,9 +85,11 @@ func (c *conn) cleanUp() (err error) {
 		c.reqCh = nil
 	}
 	if c.transactionStartedCh != nil {
+		close(c.transactionStartedCh)
 		c.transactionStartedCh = nil
 	}
 	if c.concurrentTransactionLimitCh != nil {
+		close(c.concurrentTransactionLimitCh)
 		c.concurrentTransactionLimitCh = nil
 	}
 
