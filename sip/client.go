@@ -386,7 +386,7 @@ func (c *client) tryConnect(ctx context.Context) (err error) {
 		c.backOff = c.backoffFactory()
 	}
 
-	ch := make(chan Result[Conn])
+	ch := make(chan Result[Conn], 1)
 	go dialWithBackOff(ctx, ch, c.network, c.address, c.backOff, c.options...)
 
 	return c.waitForDialWithBackoff(ctx, ch)
@@ -438,7 +438,7 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		// nolint:contextcheck
 		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
-			ch <- Ok[Conn](conn)
+			ch <- Ok(conn)
 			return
 		}
 
