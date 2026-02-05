@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -439,6 +440,12 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
 			ch <- Ok(conn)
+			return
+		}
+
+		// On Connection refused, a backoff will be useless
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			ch <- Err[Conn](errorx.EnsureStackTrace(err))
 			return
 		}
 
