@@ -142,7 +142,13 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 		c.setClosed()
 	}()
 
-	return c, c.connect(wcOpts.dialCtx)
+	err = c.connect(wcOpts.dialCtx)
+	if err != nil {
+		c.cancel(err)
+		return nil, err
+	}
+
+	return c, err
 }
 
 func (c *conn) Close() error {
