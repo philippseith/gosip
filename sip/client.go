@@ -399,10 +399,20 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
 		return errorx.EnsureStackTrace(ErrorTimeout)
 	case result := <-ch:
-		if result.Err != nil {
-			return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
+		if result.Err == nil {
+			logger.Printf("%s: waitForDial = %v", c.address, result)
+			// When connecting worked, the backoff has to start anew with the next request
+			c.backOff = nil
+
+			func() {
+				c.mxConn.Lock()
+				defer c.mxConn.Unlock()
+				c.conn = result.Ok
+			}()
+
+			return nil
 		}
-		logger.Printf("%s: waitForDial = %v", c.address, result)
+		// Error-specific handling
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
 		}
@@ -411,19 +421,7 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 			c.Close()
 			return result.Err
 		}
-		if result.Err != nil {
-			return result.Err
-		}
-		// When connecting worked, the backoff has to start anew with the next request
-		c.backOff = nil
-
-		func() {
-			c.mxConn.Lock()
-			defer c.mxConn.Unlock()
-			c.conn = result.Ok
-		}()
-
-		return nil
+		return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
 	}
 }
 
