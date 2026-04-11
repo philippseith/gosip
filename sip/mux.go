@@ -11,6 +11,11 @@ import (
 // the S/IP requests to the underlying source. Reads are optimized by reading only once and
 // broadcasting the response to the listeners of all Serve calls. NewMux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
+//
+// Example:
+//  mux := sip.NewMux(existingSyncClient)
+//  // Use mux as a SyncClient for concurrent reachable Serve calls.
+
 func NewMux(source SyncClient) SyncClient {
 	return &mux{
 		source: source,

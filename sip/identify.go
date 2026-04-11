@@ -12,6 +12,16 @@ import (
 	"github.com/joomcode/errorx"
 )
 
+// Identify broadcasts an IdentifyRequest on the specified network interface
+// and listens for IdentifyResponses from devices. Listening ends when ctx is canceled.
+//
+// Example:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+//	defer cancel()
+//	resCh, err := sip.Identify(ctx, "en0", [6]byte{1,2,3,4,5,6})
+//	if err != nil { log.Fatal(err) }
+//	for res := range resCh { fmt.Println(res) }
 func Identify(ctx context.Context, interfaceName string, nodeIdentifier [6]byte) (chan Result[*IdentifyResponse], error) {
 
 	writer := bytes.NewBuffer(make([]byte, 0, 14))

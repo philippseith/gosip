@@ -56,6 +56,13 @@ type SyncClient interface {
 // 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
 // seconds. All other options are validated immediately and an error is returned
 // if any option is invalid.
+//
+// Example:
+//  client, err := sip.NewClient("tcp", "192.168.1.1:35021")
+//  if err != nil { log.Fatal(err) }
+//  defer client.Close()
+//  resp, err := client.ReadEverything(0, 0, 0x123456)
+
 func NewClient(network, address string, options ...ConnOption) (Client, error) {
 	co := &connOptions{
 		backoffFactory: func() backoff.BackOff {

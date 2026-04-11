@@ -14,6 +14,14 @@ import (
 
 // Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
 // The Listening ends when ctx is canceled.
+//
+// Example:
+//  ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+//  defer cancel()
+//  resCh, err := sip.Browse(ctx, "en0")
+//  if err != nil { log.Fatal(err) }
+//  for res := range resCh { fmt.Println(res) }
+
 func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseResponse], error) {
 
 	browseRequest, err := buildBrowseRequest()

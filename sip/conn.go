@@ -1,3 +1,9 @@
+// Package sip implements the Sercos Internet Protocol (S/IP), used for communicating
+// and managing parameter data over Sercos devices via TCP and UDP.
+// Features include reading/writing parameters, device browsing, multiplexing for servers,
+// automatic reconnect clients, and error handling with stack traces.
+// Use NewClient for a reconnecting client, or Serve to host a S/IP server.
+// See examples on exported functions for typical usage.
 package sip
 
 import (
@@ -70,6 +76,13 @@ type ConnProperties interface {
 }
 
 // Dial opens a Conn and connects it.
+//
+// Example:
+//
+//	conn, err := sip.Dial("tcp", "192.168.1.1:35021")
+//	if err != nil { log.Fatal(err) }
+//	defer conn.Close()
+//	resp, err := conn.ReadEverything(context.Background(), 0, 0, 0x123456)
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	c, err := dial(network, address, options...)
 	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/

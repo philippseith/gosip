@@ -12,6 +12,11 @@ import (
 )
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
+//
+// Example:
+//  ln, _ := net.Listen("tcp", ":35021")
+//  err := sip.Serve(ctx, ln, mySyncClient)
+
 func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
 	serverTemplate := &connServer{
 		connOptions: connOptions{
