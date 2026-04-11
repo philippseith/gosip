@@ -271,15 +271,15 @@ func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
-			mtuWriter := bufio.NewWriterSize(conn, 1500) // Ethernet MTU is 1500
-			transactionId, err = c.writeHeader(mtuWriter, pdu)
+			bufferedWriter := bufio.NewWriterSize(conn, 1500) // Buffer header + PDU to reduce syscalls; S/IP writes are mostly small
+			transactionId, err = c.writeHeader(bufferedWriter, pdu)
 			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
 				return transactionId, err
 			}
-			err = pdu.Write(mtuWriter)
+			err = pdu.Write(bufferedWriter)
 			if err == nil {
-				err = mtuWriter.Flush()
+				err = bufferedWriter.Flush()
 			}
 			return transactionId, err
 		},
