@@ -283,7 +283,7 @@ func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 			}
 			return transactionId, err
 		},
-		ch: make(chan func(PDU) error),
+		ch: make(chan func(PDU) error, 1),
 	}
 	// Push the request to the sendloop
 	if err := c.enqueueRequest(req); err != nil {
