@@ -146,6 +146,7 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 	err = c.connect(wcOpts.dialCtx)
 	if err != nil {
 		c.cancel(err)
+		_ = c.cleanUp()
 		return nil, err
 	}
 
