@@ -245,6 +245,10 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 		// Fill it by using PDU.Read()
 		return respFunc(resp)
 	case <-ctx.Done():
+		// Capture closedCh before spawning the goroutine. cleanUp nils c.closedCh
+		// after closing it; selecting on a nil channel blocks forever, but selecting
+		// on a closed channel returns immediately — we need the latter.
+		closedCh := c.closedCh
 		go func() {
 			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block.
 			// Guard with closedCh so we don't leak if the connection closes before the send
@@ -252,7 +256,7 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 			select {
 			case respFunc := <-c.sendRequest(req):
 				_ = respFunc(resp)
-			case <-c.closedCh:
+			case <-closedCh:
 			}
 		}()
 		return errorx.EnsureStackTrace(ctx.Err())
