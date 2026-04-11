@@ -7,3 +7,5 @@ Drop pleasantries (sure, certainly, happy to).
 No hedging. Fragments fine. Short synonyms.
 Technical terms stay exact. Code blocks unchanged.
 Pattern: [thing] [action] [reason]. [next step].
+
+After approval, commit with good message.
