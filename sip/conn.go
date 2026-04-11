@@ -223,7 +223,7 @@ func (c *conn) MessageTypes() []uint32 {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return c.connectResponse.MessageTypes
+	return append([]uint32(nil), c.connectResponse.MessageTypes...)
 }
 
 func (c *conn) Ping(ctx context.Context) error {
