@@ -133,7 +133,6 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 
 	var sendRecvCtx context.Context
 	sendRecvCtx, c.cancel = context.WithCancelCause(context.Background())
-	c.connCtx = sendRecvCtx
 
 	go c.sendLoop(sendRecvCtx, c.cancel)
 	go c.receiveLoop(sendRecvCtx, c.cancel)

@@ -27,7 +27,6 @@ type conn struct {
 	mxCR            sync.RWMutex
 
 	cancel       context.CancelCauseFunc
-	connCtx      context.Context // cancelled when the connection is torn down
 	lastReceived time.Time
 
 	mxState sync.RWMutex
