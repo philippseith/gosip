@@ -28,7 +28,10 @@ func broadcast[TResp any](ctx context.Context, conns []*net.UDPConn, request []b
 			// The drives are responding on our local port but with the broadcast address.
 			// To allow listening on the port, we need to close the sending connection
 			// and open a new one for listening.
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				ch <- Err[*TResp](errorx.EnsureStackTrace(err))
+				return
+			}
 
 			listenAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
 			respConn, err := net.ListenUDP("udp", listenAddr)
