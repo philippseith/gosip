@@ -154,7 +154,9 @@ readUntilValidResponse:
 		// Read the header and decide what to do next
 		switch h.MessageType {
 		case 0:
-			return nil // TODO When does this happen?
+			return errorx.EnsureStackTrace(fmt.Errorf(
+				"%w: received message with invalid type 0, transactionId: %d",
+				ErrorInvalidResponseMessageType, h.TransactionID))
 		case BusyResponseMsgType:
 			// Busy PDU is empty, do nothing and wait for the real response
 			continue
