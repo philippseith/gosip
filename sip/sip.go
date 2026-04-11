@@ -1,3 +1,9 @@
+// Package sip implements the Sercos Internet Protocol (S/IP), used for communicating
+// and managing parameter data over Sercos devices via TCP and UDP.
+// Features include reading/writing parameters, device browsing, multiplexing for servers,
+// automatic reconnect clients, and error handling with stack traces.
+// Use NewClient for a reconnecting client, or Serve to host a S/IP server.
+// See examples on exported functions for typical usage.
 package sip
 
 import (
