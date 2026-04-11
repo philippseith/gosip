@@ -92,6 +92,10 @@ func (c *conn) cleanUp() (err error) {
 		close(c.concurrentTransactionLimitCh)
 		c.concurrentTransactionLimitCh = nil
 	}
+	if c.closedCh != nil {
+		close(c.closedCh)
+		c.closedCh = nil
+	}
 
 	if c.Conn != nil {
 		err = c.Conn.Close()

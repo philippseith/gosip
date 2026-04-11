@@ -246,9 +246,14 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 		return respFunc(resp)
 	case <-ctx.Done():
 		go func() {
-			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block
-			respFunc := <-c.sendRequest(req)
-			_ = respFunc(resp)
+			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block.
+			// Guard with closedCh so we don't leak if the connection closes before the send
+			// loop picks up the request.
+			select {
+			case respFunc := <-c.sendRequest(req):
+				_ = respFunc(resp)
+			case <-c.closedCh:
+			}
 		}()
 		return errorx.EnsureStackTrace(ctx.Err())
 	}
