@@ -8,4 +8,4 @@ No hedging. Fragments fine. Short synonyms.
 Technical terms stay exact. Code blocks unchanged.
 Pattern: [thing] [action] [reason]. [next step].
 
-After approval, commit with good message.
+Do not commit without approval.
