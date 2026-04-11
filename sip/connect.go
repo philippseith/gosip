@@ -2,6 +2,7 @@ package sip
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/joomcode/errorx"
@@ -61,6 +62,9 @@ func (c *ConnectResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &c.connectResponse)
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
+	}
+	if c.NoMessageTypes > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: NoMessageTypes %d exceeds maximum %d", Error, c.NoMessageTypes, maxPDUFieldLength))
 	}
 	c.MessageTypes = make([]uint32, c.NoMessageTypes)
 	if err := binary.Read(reader, binary.LittleEndian, c.MessageTypes); err != nil {

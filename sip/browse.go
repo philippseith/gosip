@@ -174,6 +174,9 @@ func (b *BrowseResponse) Read(reader io.Reader) error {
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
+	if b.DisplayNameLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: DisplayNameLength %d exceeds maximum %d", Error, b.DisplayNameLength, maxPDUFieldLength))
+	}
 	b.DisplayName = make([]byte, b.DisplayNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.DisplayName)
 	if err != nil {
@@ -182,6 +185,9 @@ func (b *BrowseResponse) Read(reader io.Reader) error {
 	err = binary.Read(reader, binary.LittleEndian, &b.HostNameLength)
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
+	}
+	if b.HostNameLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: HostNameLength %d exceeds maximum %d", Error, b.HostNameLength, maxPDUFieldLength))
 	}
 	b.HostName = make([]byte, b.HostNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.HostName)

@@ -11,6 +11,11 @@ import (
 // Port is the default SIP port
 const Port = 35021
 
+// maxPDUFieldLength is the maximum byte length of any variable-length field
+// in an S/IP PDU (data, name, unit, display name, host name, number of message
+// types). Capped at 0xFFFF (65535) per the Sercos IDN parameter model.
+const maxPDUFieldLength uint32 = 0xFFFF
+
 // Error defines the S/IP error class. Base of all other S/IP errors
 var Error = errors.New("S/IP")
 
