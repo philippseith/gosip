@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 
 	"github.com/joomcode/errorx"
 )
@@ -78,6 +79,9 @@ func (c connServer) serve(ctx context.Context) {
 }
 
 func (c connServer) handleMessages() error {
+	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
 	h := &Header{}
 	err := h.Read(c.conn)
 	if err != nil {
