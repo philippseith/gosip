@@ -54,8 +54,9 @@ type SyncClient interface {
 // be configured with the WithDialBackoff option. If the option is not given, the
 // backoff strategy is an exponential backoff, starting with a backoff time of
 // 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
-// seconds. All other options are ignored.
-func NewClient(network, address string, options ...ConnOption) Client {
+// seconds. All other options are validated immediately and an error is returned
+// if any option is invalid.
+func NewClient(network, address string, options ...ConnOption) (Client, error) {
 	co := &connOptions{
 		backoffFactory: func() backoff.BackOff {
 			b := backoff.NewExponentialBackOff()
@@ -64,14 +65,16 @@ func NewClient(network, address string, options ...ConnOption) Client {
 		},
 	}
 	for _, option := range options {
-		_ = option(co)
+		if err := option(co); err != nil {
+			return nil, errorx.EnsureStackTrace(err)
+		}
 	}
 	return &client{
 		network:        network,
 		address:        address,
 		options:        options,
 		backoffFactory: co.backoffFactory,
-	}
+	}, nil
 }
 
 // WithDialBackoff configures the backoff strategy for failed connects. See

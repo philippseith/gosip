@@ -91,9 +91,11 @@ func TestMuxServe(t *testing.T) {
 	go sip.Serve(ctx, listener, mux)
 
 	assert.NoError(t, err)
-	clientA := sip.NewClient("tcp", "127.0.0.1:8086")
+	clientA, err := sip.NewClient("tcp", "127.0.0.1:8086")
+	assert.NoError(t, err)
 	defer clientA.Close()
-	clientB := sip.NewClient("tcp", "127.0.0.1:8086")
+	clientB, err := sip.NewClient("tcp", "127.0.0.1:8086")
+	assert.NoError(t, err)
 	defer clientB.Close()
 
 	assert.NoError(t, clientA.Ping())
