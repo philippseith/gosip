@@ -12,7 +12,7 @@ import (
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
 func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
-	server := &connServer{
+	serverTemplate := &connServer{
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
@@ -21,7 +21,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 	}
 
 	for _, option := range options {
-		if err := option(&server.connOptions); err != nil {
+		if err := option(&serverTemplate.connOptions); err != nil {
 			return errorx.EnsureStackTrace(err)
 		}
 	}
@@ -33,14 +33,14 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 				return
 			default:
 				conn, err := listener.Accept()
-				if ctx.Err() != nil {
-					conn.Close()
-					return
-				}
 				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					log.Printf("accept: %+v", err)
 					continue
 				}
+				server := *serverTemplate
 				server.conn = conn
 				go server.serve(ctx)
 			}
