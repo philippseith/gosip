@@ -184,7 +184,11 @@ readUntilValidResponse:
 		}
 	}
 	// Get the response channel of the request for this transactionID and send the respFunc to it
-	c.checkoutResponseChan(h.TransactionID) <- respFunc
+	ch := c.checkoutResponseChan(h.TransactionID)
+	if ch == nil {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: received response for unknown transaction ID %d", Error, h.TransactionID))
+	}
+	ch <- respFunc
 	// Important: Wait for the current respFunc to read the rest of the message (the PDU) from the net.Conn
 	<-respFuncExecuted
 	return nil
