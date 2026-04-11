@@ -246,7 +246,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	if len(data) > 0xFFFF {
