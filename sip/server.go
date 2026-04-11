@@ -28,31 +28,35 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 	}
 
 	go func() {
+		stop := context.AfterFunc(ctx, func() {
+			// listener may already be closed by the caller; recover from
+			// panicking Close implementations (e.g., channel-based test
+			// listeners) and ignore the error either way.
+			defer func() { recover() }() //nolint:errcheck
+			listener.Close()
+		})
+		defer stop()
+
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				conn, err := listener.Accept()
-				if err != nil {
-					if ctx.Err() != nil {
-						return
-					}
-					log.Printf("accept: %+v", err)
-					continue
+			conn, err := listener.Accept()
+			if err != nil {
+				if ctx.Err() != nil {
+					return
 				}
-				server := *serverTemplate
-				server.conn = conn
-				if serverTemplate.maxConnectionsCh != nil {
-					serverTemplate.maxConnectionsCh <- struct{}{}
-				}
-				go func() {
-					if serverTemplate.maxConnectionsCh != nil {
-						defer func() { <-serverTemplate.maxConnectionsCh }()
-					}
-					server.serve(ctx)
-				}()
+				log.Printf("accept: %+v", err)
+				continue
 			}
+			server := *serverTemplate
+			server.conn = conn
+			if serverTemplate.maxConnectionsCh != nil {
+				serverTemplate.maxConnectionsCh <- struct{}{}
+			}
+			go func() {
+				if serverTemplate.maxConnectionsCh != nil {
+					defer func() { <-serverTemplate.maxConnectionsCh }()
+				}
+				server.serve(ctx)
+			}()
 		}
 	}()
 	return nil
