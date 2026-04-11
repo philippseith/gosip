@@ -18,6 +18,7 @@ type connOptions struct {
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
 	concurrentTransactionLimitCh chan struct{}
+	maxConnectionsCh             chan struct{}
 	sendKeepAlive                bool
 	backoffFactory               func() backoff.BackOff
 	writerFactory                func(io.Writer) io.Writer
@@ -51,6 +52,20 @@ func WithLeaseTimeout(timeout int) ConnOption {
 			return nil
 		}
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0 and smaller %v", Error, ^uint32(0)))
+	}
+}
+
+// WithMaxConnections limits the number of concurrently active server connections
+// accepted by Serve. When the limit is reached the accept loop blocks until an
+// existing connection closes, providing back-pressure at the TCP level.
+// If not set, there is no limit. Must be greater than 0.
+func WithMaxConnections(n int) ConnOption {
+	return func(c *connOptions) error {
+		if n <= 0 {
+			return errorx.EnsureStackTrace(fmt.Errorf("%w: MaxConnections must be greater than 0", Error))
+		}
+		c.maxConnectionsCh = make(chan struct{}, n)
+		return nil
 	}
 }
 

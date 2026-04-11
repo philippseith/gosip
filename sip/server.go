@@ -43,7 +43,15 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 				}
 				server := *serverTemplate
 				server.conn = conn
-				go server.serve(ctx)
+				if serverTemplate.maxConnectionsCh != nil {
+					serverTemplate.maxConnectionsCh <- struct{}{}
+				}
+				go func() {
+					if serverTemplate.maxConnectionsCh != nil {
+						defer func() { <-serverTemplate.maxConnectionsCh }()
+					}
+					server.serve(ctx)
+				}()
 			}
 		}
 	}()
