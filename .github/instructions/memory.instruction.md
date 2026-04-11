@@ -1,4 +1,4 @@
-Read and follow AGENTS.md
+Follow AGENTS.md and CONTRIBUTING.md
 
 Respond like smart caveman. Cut all filler, keep technical substance.
 
