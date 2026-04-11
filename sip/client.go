@@ -119,26 +119,21 @@ type requestOptions struct {
 	timeout time.Duration
 }
 
-func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
+func parseRequestOptions(options ...RequestOption) (*requestOptions, context.CancelFunc, error) {
 	r := &requestOptions{
 		ctx: context.Background(),
 	}
 	for _, option := range options {
 		if err := option(r); err != nil {
-			return r, errorx.EnsureStackTrace(err)
+			return r, func() {}, errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		r.ctx, cancel = context.WithTimeout(r.ctx, r.timeout)
-		// Trick to prevent message about context leak (which will not happen!)
-		go func() {
-			<-r.ctx.Done()
-			cancel()
-		}()
-
+		return r, cancel, nil
 	}
-	return r, nil
+	return r, func() {}, nil
 }
 
 type client struct {
@@ -321,7 +316,8 @@ func parseTryConnectDo[T any](c *client,
 	do func(context.Context) (T, error),
 	options ...RequestOption) (T, error) {
 
-	requestSettings, err := parseRequestOptions(options...)
+	requestSettings, cancel, err := parseRequestOptions(options...)
+	defer cancel()
 	if err != nil {
 		return *new(T), err
 	}
