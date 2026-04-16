@@ -11,6 +11,11 @@ import (
 // the S/IP requests to the underlying source. Reads are optimized by reading only once and
 // broadcasting the response to the listeners of all Serve calls. NewMux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
+//
+// Example:
+//  mux := sip.NewMux(existingSyncClient)
+//  // Use mux as a SyncClient for concurrent reachable Serve calls.
+
 func NewMux(source SyncClient) SyncClient {
 	return &mux{
 		source: source,
@@ -44,7 +49,7 @@ func (m *mux) ReadEverything(slaveIndex, slaveExtension int, idn uint32, options
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return ReadEverythingResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return ReadEverythingResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
@@ -66,7 +71,7 @@ func (m *mux) ReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options .
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return ReadOnlyDataResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return ReadOnlyDataResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
@@ -88,7 +93,7 @@ func (m *mux) ReadDescription(slaveIndex, slaveExtension int, idn uint32, option
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return ReadDescriptionResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return ReadDescriptionResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{
@@ -110,7 +115,7 @@ func (m *mux) ReadDataState(slaveIndex, slaveExtension int, idn uint32, options 
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return ReadDataStateResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return ReadDataStateResponse{}, errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	result := <-m.enqueue(muxJob{

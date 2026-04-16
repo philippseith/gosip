@@ -14,6 +14,14 @@ import (
 
 // Browse listens to BrowseResponses and broadcasts one BrowseRequest on the given interface.
 // The Listening ends when ctx is canceled.
+//
+// Example:
+//  ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+//  defer cancel()
+//  resCh, err := sip.Browse(ctx, "en0")
+//  if err != nil { log.Fatal(err) }
+//  for res := range resCh { fmt.Println(res) }
+
 func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseResponse], error) {
 
 	browseRequest, err := buildBrowseRequest()
@@ -174,6 +182,9 @@ func (b *BrowseResponse) Read(reader io.Reader) error {
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
+	if b.DisplayNameLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: DisplayNameLength %d exceeds maximum %d", Error, b.DisplayNameLength, maxPDUFieldLength))
+	}
 	b.DisplayName = make([]byte, b.DisplayNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.DisplayName)
 	if err != nil {
@@ -182,6 +193,9 @@ func (b *BrowseResponse) Read(reader io.Reader) error {
 	err = binary.Read(reader, binary.LittleEndian, &b.HostNameLength)
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
+	}
+	if b.HostNameLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: HostNameLength %d exceeds maximum %d", Error, b.HostNameLength, maxPDUFieldLength))
 	}
 	b.HostName = make([]byte, b.HostNameLength)
 	err = binary.Read(reader, binary.LittleEndian, b.HostName)

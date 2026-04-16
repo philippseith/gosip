@@ -6,13 +6,19 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 
 	"github.com/joomcode/errorx"
 )
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
+//
+// Example:
+//  ln, _ := net.Listen("tcp", ":35021")
+//  err := sip.Serve(ctx, ln, mySyncClient)
+
 func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
-	server := &connServer{
+	serverTemplate := &connServer{
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
@@ -21,29 +27,41 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 	}
 
 	for _, option := range options {
-		if err := option(&server.connOptions); err != nil {
+		if err := option(&serverTemplate.connOptions); err != nil {
 			return errorx.EnsureStackTrace(err)
 		}
 	}
 
 	go func() {
+		stop := context.AfterFunc(ctx, func() {
+			// listener may already be closed by the caller; recover from
+			// panicking Close implementations (e.g., channel-based test
+			// listeners) and ignore the error either way.
+			defer func() { recover() }() //nolint:errcheck
+			listener.Close()
+		})
+		defer stop()
+
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				conn, err := listener.Accept()
+			conn, err := listener.Accept()
+			if err != nil {
 				if ctx.Err() != nil {
-					conn.Close()
 					return
 				}
-				if err != nil {
-					log.Printf("accept: %+v", err)
-					continue
-				}
-				server.conn = conn
-				go server.serve(ctx)
+				log.Printf("accept: %+v", err)
+				continue
 			}
+			server := *serverTemplate
+			server.conn = conn
+			if serverTemplate.maxConnectionsCh != nil {
+				serverTemplate.maxConnectionsCh <- struct{}{}
+			}
+			go func() {
+				if serverTemplate.maxConnectionsCh != nil {
+					defer func() { <-serverTemplate.maxConnectionsCh }()
+				}
+				server.serve(ctx)
+			}()
 		}
 	}()
 	return nil
@@ -78,6 +96,9 @@ func (c connServer) serve(ctx context.Context) {
 }
 
 func (c connServer) handleMessages() error {
+	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
 	h := &Header{}
 	err := h.Read(c.conn)
 	if err != nil {

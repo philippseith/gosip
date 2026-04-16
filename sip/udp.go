@@ -19,7 +19,7 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 		// the go func might not end. We break here.
 		return false
 	}
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65507) // maximum IPv4 UDP payload; ReadFrom silently truncates larger datagrams
 	n, _, err := conn.ReadFrom(buf)
 	if err != nil {
 		// Timeouts are expected and used to check ctx.Done() in regular intervals

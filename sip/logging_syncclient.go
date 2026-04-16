@@ -9,6 +9,12 @@ type LoggingSyncClient struct {
 }
 
 // NewLoggingSyncClient creates a new LoggingSyncClient that wraps the given SyncClient.
+//
+// Example:
+//
+//	sync := sip.NewLoggingSyncClient(mySyncClient)
+//	err := sync.Ping()
+//	// All method calls will be logged.
 func NewLoggingSyncClient(inner SyncClient) *LoggingSyncClient {
 	return &LoggingSyncClient{inner: inner}
 }

@@ -7,12 +7,12 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-func (c *conn) connect(ctx context.Context) error {
+func (c *conn) connect(dialCtx context.Context, sendRecvCtx context.Context) error {
 	// TODO detect network latency and add it to the busy timeout
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
 	select {
-	case <-ctx.Done():
-		return errorx.EnsureStackTrace(ctx.Err())
+	case <-dialCtx.Done():
+		return errorx.EnsureStackTrace(dialCtx.Err())
 	case respFunc := <-c.sendRequest(&ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
@@ -30,7 +30,7 @@ func (c *conn) connect(ctx context.Context) error {
 			c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
 			// Eventually start the KeepAlive loop
 			if c.sendKeepAlive {
-				go c.sendKeepAliveLoop(ctx)
+				go c.sendKeepAliveLoop(sendRecvCtx)
 			}
 		}()
 		return nil
@@ -91,6 +91,10 @@ func (c *conn) cleanUp() (err error) {
 	if c.concurrentTransactionLimitCh != nil {
 		close(c.concurrentTransactionLimitCh)
 		c.concurrentTransactionLimitCh = nil
+	}
+	if c.closedCh != nil {
+		close(c.closedCh)
+		c.closedCh = nil
 	}
 
 	if c.Conn != nil {

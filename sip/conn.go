@@ -1,3 +1,9 @@
+// Package sip implements the Sercos Internet Protocol (S/IP), used for communicating
+// and managing parameter data over Sercos devices via TCP and UDP.
+// Features include reading/writing parameters, device browsing, multiplexing for servers,
+// automatic reconnect clients, and error handling with stack traces.
+// Use NewClient for a reconnecting client, or Serve to host a S/IP server.
+// See examples on exported functions for typical usage.
 package sip
 
 import (
@@ -70,6 +76,13 @@ type ConnProperties interface {
 }
 
 // Dial opens a Conn and connects it.
+//
+// Example:
+//
+//	conn, err := sip.Dial("tcp", "192.168.1.1:35021")
+//	if err != nil { log.Fatal(err) }
+//	defer conn.Close()
+//	resp, err := conn.ReadEverything(context.Background(), 0, 0, 0x123456)
 func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	c, err := dial(network, address, options...)
 	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
@@ -118,6 +131,7 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
+		closedCh:             make(chan struct{}),
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
@@ -142,9 +156,10 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 		c.setClosed()
 	}()
 
-	err = c.connect(wcOpts.dialCtx)
+	err = c.connect(wcOpts.dialCtx, sendRecvCtx)
 	if err != nil {
 		c.cancel(err)
+		_ = c.cleanUp()
 		return nil, err
 	}
 
@@ -208,7 +223,7 @@ func (c *conn) MessageTypes() []uint32 {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return c.connectResponse.MessageTypes
+	return append([]uint32(nil), c.connectResponse.MessageTypes...)
 }
 
 func (c *conn) Ping(ctx context.Context) error {
@@ -245,7 +260,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 	}
 	u16slaveIndex := uint16(slaveIndex)
 	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveIndex))
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
 	}
 	u16slaveExtension := uint16(slaveExtension)
 	if len(data) > 0xFFFF {

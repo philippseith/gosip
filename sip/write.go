@@ -2,6 +2,7 @@ package sip
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/joomcode/errorx"
@@ -20,6 +21,9 @@ func (w *WriteDataRequest) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &w.writeDataRequest)
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
+	}
+	if w.DataLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: DataLength %d exceeds maximum %d", Error, w.DataLength, maxPDUFieldLength))
 	}
 	w.Data = make([]byte, w.DataLength)
 	if err = binary.Read(reader, binary.LittleEndian, w.Data); err != nil {

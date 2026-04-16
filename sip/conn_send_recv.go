@@ -154,7 +154,9 @@ readUntilValidResponse:
 		// Read the header and decide what to do next
 		switch h.MessageType {
 		case 0:
-			return nil // TODO When does this happen?
+			return errorx.EnsureStackTrace(fmt.Errorf(
+				"%w: received message with invalid type 0, transactionId: %d",
+				ErrorInvalidResponseMessageType, h.TransactionID))
 		case BusyResponseMsgType:
 			// Busy PDU is empty, do nothing and wait for the real response
 			continue
@@ -184,7 +186,11 @@ readUntilValidResponse:
 		}
 	}
 	// Get the response channel of the request for this transactionID and send the respFunc to it
-	c.checkoutResponseChan(h.TransactionID) <- respFunc
+	ch := c.checkoutResponseChan(h.TransactionID)
+	if ch == nil {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: received response for unknown transaction ID %d", Error, h.TransactionID))
+	}
+	ch <- respFunc
 	// Important: Wait for the current respFunc to read the rest of the message (the PDU) from the net.Conn
 	<-respFuncExecuted
 	return nil
@@ -239,10 +245,19 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 		// Fill it by using PDU.Read()
 		return respFunc(resp)
 	case <-ctx.Done():
+		// Capture closedCh before spawning the goroutine. cleanUp nils c.closedCh
+		// after closing it; selecting on a nil channel blocks forever, but selecting
+		// on a closed channel returns immediately — we need the latter.
+		closedCh := c.closedCh
 		go func() {
-			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block
-			respFunc := <-c.sendRequest(req)
-			_ = respFunc(resp)
+			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block.
+			// Guard with closedCh so we don't leak if the connection closes before the send
+			// loop picks up the request.
+			select {
+			case respFunc := <-c.sendRequest(req):
+				_ = respFunc(resp)
+			case <-closedCh:
+			}
 		}()
 		return errorx.EnsureStackTrace(ctx.Err())
 	}
@@ -256,19 +271,19 @@ func (c *conn) sendRequest(pdu PDU) <-chan func(PDU) error {
 	req := request{
 		write: func(conn io.Writer) (transactionId uint32, err error) {
 			// Make sure header and PDU are sent in one package if possible
-			mtuWriter := bufio.NewWriterSize(conn, 1500) // Ethernet MTU is 1500
-			transactionId, err = c.writeHeader(mtuWriter, pdu)
+			bufferedWriter := bufio.NewWriterSize(conn, 1500) // Buffer header + PDU to reduce syscalls; S/IP writes are mostly small
+			transactionId, err = c.writeHeader(bufferedWriter, pdu)
 			// log.Printf("sent Header %v, id: %v", pdu.MessageType(), transactionId)
 			if err != nil {
 				return transactionId, err
 			}
-			err = pdu.Write(mtuWriter)
+			err = pdu.Write(bufferedWriter)
 			if err == nil {
-				err = mtuWriter.Flush()
+				err = bufferedWriter.Flush()
 			}
 			return transactionId, err
 		},
-		ch: make(chan func(PDU) error),
+		ch: make(chan func(PDU) error, 1),
 	}
 	// Push the request to the sendloop
 	if err := c.enqueueRequest(req); err != nil {

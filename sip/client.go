@@ -54,8 +54,16 @@ type SyncClient interface {
 // be configured with the WithDialBackoff option. If the option is not given, the
 // backoff strategy is an exponential backoff, starting with a backoff time of
 // 500ms, exponentially incremented by factor 1.5, with an overall timeout of 10
-// seconds. All other options are ignored.
-func NewClient(network, address string, options ...ConnOption) Client {
+// seconds. All other options are validated immediately and an error is returned
+// if any option is invalid.
+//
+// Example:
+//  client, err := sip.NewClient("tcp", "192.168.1.1:35021")
+//  if err != nil { log.Fatal(err) }
+//  defer client.Close()
+//  resp, err := client.ReadEverything(0, 0, 0x123456)
+
+func NewClient(network, address string, options ...ConnOption) (Client, error) {
 	co := &connOptions{
 		backoffFactory: func() backoff.BackOff {
 			b := backoff.NewExponentialBackOff()
@@ -64,14 +72,16 @@ func NewClient(network, address string, options ...ConnOption) Client {
 		},
 	}
 	for _, option := range options {
-		_ = option(co)
+		if err := option(co); err != nil {
+			return nil, errorx.EnsureStackTrace(err)
+		}
 	}
 	return &client{
 		network:        network,
 		address:        address,
 		options:        options,
 		backoffFactory: co.backoffFactory,
-	}
+	}, nil
 }
 
 // WithDialBackoff configures the backoff strategy for failed connects. See
@@ -119,26 +129,21 @@ type requestOptions struct {
 	timeout time.Duration
 }
 
-func parseRequestOptions(options ...RequestOption) (*requestOptions, error) {
+func parseRequestOptions(options ...RequestOption) (*requestOptions, context.CancelFunc, error) {
 	r := &requestOptions{
 		ctx: context.Background(),
 	}
 	for _, option := range options {
 		if err := option(r); err != nil {
-			return r, errorx.EnsureStackTrace(err)
+			return r, func() {}, errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.timeout > 0 {
 		var cancel context.CancelFunc
 		r.ctx, cancel = context.WithTimeout(r.ctx, r.timeout)
-		// Trick to prevent message about context leak (which will not happen!)
-		go func() {
-			<-r.ctx.Done()
-			cancel()
-		}()
-
+		return r, cancel, nil
 	}
-	return r, nil
+	return r, func() {}, nil
 }
 
 type client struct {
@@ -321,7 +326,8 @@ func parseTryConnectDo[T any](c *client,
 	do func(context.Context) (T, error),
 	options ...RequestOption) (T, error) {
 
-	requestSettings, err := parseRequestOptions(options...)
+	requestSettings, cancel, err := parseRequestOptions(options...)
+	defer cancel()
 	if err != nil {
 		return *new(T), err
 	}
@@ -400,10 +406,20 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
 		return errorx.EnsureStackTrace(ErrorTimeout)
 	case result := <-ch:
-		if result.Err != nil {
-			return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
+		if result.Err == nil {
+			logger.Printf("%s: waitForDial = %v", c.address, result)
+			// When connecting worked, the backoff has to start anew with the next request
+			c.backOff = nil
+
+			func() {
+				c.mxConn.Lock()
+				defer c.mxConn.Unlock()
+				c.conn = result.Ok
+			}()
+
+			return nil
 		}
-		logger.Printf("%s: waitForDial = %v", c.address, result)
+		// Error-specific handling
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
 		}
@@ -412,19 +428,7 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 			c.Close()
 			return result.Err
 		}
-		if result.Err != nil {
-			return result.Err
-		}
-		// When connecting worked, the backoff has to start anew with the next request
-		c.backOff = nil
-
-		func() {
-			c.mxConn.Lock()
-			defer c.mxConn.Unlock()
-			c.conn = result.Ok
-		}()
-
-		return nil
+		return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
 	}
 }
 

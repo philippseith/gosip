@@ -1,3 +1,9 @@
+// Package sip implements the Sercos Internet Protocol (S/IP), used for communicating
+// and managing parameter data over Sercos devices via TCP and UDP.
+// Features include reading/writing parameters, device browsing, multiplexing for servers,
+// automatic reconnect clients, and error handling with stack traces.
+// Use NewClient for a reconnecting client, or Serve to host a S/IP server.
+// See examples on exported functions for typical usage.
 package sip
 
 import (
@@ -10,6 +16,11 @@ import (
 
 // Port is the default SIP port
 const Port = 35021
+
+// maxPDUFieldLength is the maximum byte length of any variable-length field
+// in an S/IP PDU (data, name, unit, display name, host name, number of message
+// types). Capped at 0xFFFF (65535) per the Sercos IDN parameter model.
+const maxPDUFieldLength uint32 = 0xFFFF
 
 // Error defines the S/IP error class. Base of all other S/IP errors
 var Error = errors.New("S/IP")
