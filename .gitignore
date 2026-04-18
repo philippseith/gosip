@@ -23,3 +23,7 @@ go.work
 #idea
 .idea
 sip/testdata/test_config.json
+.pi-lens/cache/session-start-guidance.json
+.pi-lens/cache/session-start-guidance.meta.json
+.pi-lens/cache/todo-baseline.json
+.pi-lens/cache/todo-baseline.meta.json
