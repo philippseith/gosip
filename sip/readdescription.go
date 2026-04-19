@@ -66,16 +66,15 @@ func (r *ReadDescriptionResponse) Read(reader io.Reader) error {
 	if uint32(r.NameLength) > maxPDUFieldLength {
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: NameLength %d exceeds maximum %d", Error, r.NameLength, maxPDUFieldLength))
 	}
-	r.Name = make([]byte, r.NameLength)
-	err = binary.Read(reader, binary.LittleEndian, r.Name)
+	r.Name, err = readBuffer(reader, uint32(r.NameLength))
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
 	if uint32(r.UnitLength) > maxPDUFieldLength {
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: UnitLength %d exceeds maximum %d", Error, r.UnitLength, maxPDUFieldLength))
 	}
-	r.Unit = make([]byte, r.UnitLength)
-	if err = binary.Read(reader, binary.LittleEndian, r.Unit); err != nil {
+	r.Unit, err = readBuffer(reader, uint32(r.UnitLength))
+	if err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
 	return nil

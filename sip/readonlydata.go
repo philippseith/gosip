@@ -60,8 +60,7 @@ func (r *ReadOnlyDataResponse) Read(reader io.Reader) error {
 	if r.DataLength > maxPDUFieldLength {
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: DataLength %d exceeds maximum %d", Error, r.DataLength, maxPDUFieldLength))
 	}
-	r.Data = make([]byte, r.DataLength)
-	err = binary.Read(reader, binary.LittleEndian, r.Data)
+	r.Data, err = readBuffer(reader, r.DataLength)
 	if err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
