@@ -25,15 +25,7 @@ import (
 type Client interface {
 	ConnProperties
 	SyncClient
-
-	GoPing(options ...RequestOption) <-chan error
-
-	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse]
-	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse]
-	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse]
-	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse]
-
-	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
+	AsyncClient
 
 	Close() error
 	Closed() bool
@@ -48,6 +40,17 @@ type SyncClient interface {
 	ReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) (ReadDataStateResponse, error)
 
 	WriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) error
+}
+
+type AsyncClient interface {
+	GoPing(options ...RequestOption) <-chan error
+
+	GoReadEverything(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadEverythingResponse]
+	GoReadOnlyData(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadOnlyDataResponse]
+	GoReadDescription(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDescriptionResponse]
+	GoReadDataState(slaveIndex, slaveExtension int, idn uint32, options ...RequestOption) <-chan Result[ReadDataStateResponse]
+
+	GoWriteData(slaveIndex, slaveExtension int, idn uint32, data []byte, options ...RequestOption) <-chan error
 }
 
 // NewClient creates a new Client. The backoff strategy for failed connects can
