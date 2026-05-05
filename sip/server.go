@@ -124,27 +124,47 @@ func (c connServer) handleMessages() error {
 	}
 }
 
+var defaultMessageTypes = []MessageType{
+	PingRequestMsgType,
+	ReadDataStateRequestMsgType,
+	ReadDescriptionRequestMsgType,
+	ReadEverythingRequestMsgType,
+	ReadOnlyDataRequestMsgType,
+	WriteDataRequestMsgType,
+}
+
 func (c connServer) handleConnect(transactionID uint32) error {
 	req := ConnectRequest{}
 	err := req.Read(c.conn)
 	if err != nil {
 		return err
 	}
+	messageTypes := defaultMessageTypes
+	if len(c.messageTypes) > 0 {
+		allowed := make(map[MessageType]struct{}, len(c.messageTypes))
+		for _, mt := range c.messageTypes {
+			allowed[mt] = struct{}{}
+		}
+		filtered := make([]MessageType, 0, len(defaultMessageTypes))
+		for _, mt := range defaultMessageTypes {
+			if _, ok := allowed[mt]; ok {
+				filtered = append(filtered, mt)
+			}
+		}
+		messageTypes = filtered
+	}
+	respMessageTypes := make([]uint32, len(messageTypes))
+	for i, mt := range messageTypes {
+		respMessageTypes[i] = uint32(mt)
+	}
 	resp := &ConnectResponse{
 		connectResponse: connectResponse{
 			Version:        1,
 			BusyTimeout:    c.userBusyTimeout,
 			LeaseTimeout:   c.userLeaseTimeout,
-			NoMessageTypes: 6,
+			NoMessageTypes: uint32(len(respMessageTypes)),
 		},
-		MessageTypes: []uint32{
-			uint32(PingRequestMsgType),
-			uint32(ReadDataStateRequestMsgType),
-			uint32(ReadDescriptionRequestMsgType),
-			uint32(ReadEverythingRequestMsgType),
-			uint32(ReadOnlyDataRequestMsgType),
-			uint32(WriteDataRequestMsgType),
-		},
+		MessageTypes: respMessageTypes,
 	}
 	return c.writeWithHeader(resp, transactionID)
 }

@@ -17,6 +17,7 @@ type connOptions struct {
 	dialCtx                      context.Context
 	userBusyTimeout              uint32
 	userLeaseTimeout             uint32
+	messageTypes                 []MessageType
 	concurrentTransactionLimitCh chan struct{}
 	maxConnectionsCh             chan struct{}
 	sendKeepAlive                bool
@@ -52,6 +53,19 @@ func WithLeaseTimeout(timeout int) ConnOption {
 			return nil
 		}
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: Timeout must be greater 0 and smaller %v", Error, ^uint32(0)))
+	}
+}
+
+// WithMessageTypes sets the request message types announced in ConnectResponse.
+// If not set, the default request types are announced.
+// This is a pure server option.
+func WithMessageTypes(messageTypes ...MessageType) ConnOption {
+	return func(c *connOptions) error {
+		if len(messageTypes) == 0 {
+			return errorx.EnsureStackTrace(fmt.Errorf("%w: At least one message type is required", Error))
+		}
+		c.messageTypes = append([]MessageType(nil), messageTypes...)
+		return nil
 	}
 }
 
@@ -117,4 +131,19 @@ func WithWriter(writerFactory func(io.Writer) io.Writer) ConnOption {
 		c.writerFactory = writerFactory
 		return nil
 	}
+}
+
+// ConnOptionsFromProperties creates a list of ConnOptions from a ConnProperties.
+// The returned options configure BusyTimeout, LeaseTimeout, and MessageTypes to
+// match the values reported by p, so that a new connection can be dialled with
+// the same negotiated parameters.
+func ConnOptionsFromProperties(p ConnProperties) []ConnOption {
+	opts := []ConnOption{
+		WithBusyTimeout(int(p.BusyTimeout().Milliseconds())),
+		WithLeaseTimeout(int(p.LeaseTimeout().Milliseconds())),
+	}
+	if mts := p.MessageTypes(); len(mts) > 0 {
+		opts = append(opts, WithMessageTypes(mts...))
+	}
+	return opts
 }

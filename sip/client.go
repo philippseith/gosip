@@ -209,7 +209,7 @@ func (c *client) LastReceived() time.Time {
 	return conn.LastReceived()
 }
 
-func (c *client) MessageTypes() []uint32 {
+func (c *client) MessageTypes() []MessageType {
 	conn := c.Conn()
 	if conn == nil {
 		return nil

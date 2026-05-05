@@ -72,7 +72,7 @@ type ConnProperties interface {
 	LeaseTimeout() time.Duration
 	LastReceived() time.Time
 
-	MessageTypes() []uint32
+	MessageTypes() []MessageType
 }
 
 // Dial opens a Conn and connects it.
@@ -219,11 +219,15 @@ func (c *conn) LastReceived() time.Time {
 	return c.lastReceived
 }
 
-func (c *conn) MessageTypes() []uint32 {
+func (c *conn) MessageTypes() []MessageType {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return append([]uint32(nil), c.connectResponse.MessageTypes...)
+	mts := make([]MessageType, len(c.connectResponse.MessageTypes))
+	for i, mt := range c.connectResponse.MessageTypes {
+		mts[i] = MessageType(mt)
+	}
+	return mts
 }
 
 func (c *conn) Ping(ctx context.Context) error {
