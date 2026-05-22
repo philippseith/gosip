@@ -13,7 +13,7 @@ func (c *conn) connect(dialCtx context.Context, sendRecvCtx context.Context) err
 	select {
 	case <-dialCtx.Done():
 		return errorx.EnsureStackTrace(dialCtx.Err())
-	case respFunc := <-c.sendRequest(&ConnectRequest{
+	case respFunc := <-c.sendRequest(dialCtx, &ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
 		LeaseTimeout: c.userLeaseTimeout,
