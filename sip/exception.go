@@ -2,6 +2,7 @@ package sip
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -54,6 +55,15 @@ func (c Exception) Error() string {
 
 func (c Exception) Unwrap() error {
 	return Error
+}
+
+// SpecificErrorCode returns the specific error code if the error is of type Exception and the common error code is ServiceSpecificError, otherwise it returns 0.
+func SpecificErrorCode(err error) uint32 {
+	var e Exception
+	if errors.As(err, &e) && e.CommonErrorCode == ServiceSpecificError {
+		return e.SpecificErrorCode
+	}
+	return 0
 }
 
 // the server is not able to serve a TCP based S/IP connection. See TCP based communication initialization for further details.
