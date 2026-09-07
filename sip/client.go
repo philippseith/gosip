@@ -134,6 +134,9 @@ func parseRequestOptions(options ...RequestOption) (*requestOptions, context.Can
 		ctx: context.Background(),
 	}
 	for _, option := range options {
+		if option == nil {
+			continue
+		}
 		if err := option(r); err != nil {
 			return r, func() {}, errorx.EnsureStackTrace(err)
 		}
