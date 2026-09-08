@@ -62,7 +62,8 @@ func (r *requestOptions) GetMetaData(key string) (any, bool) {
 	if r.metaData == nil {
 		return nil, false
 	}
-	return r.metaData[key], true
+	value, ok := r.metaData[key]
+	return value, ok
 }
 
 func ParseRequestOptions(options ...RequestOption) (RequestOptions, context.CancelFunc, error) {
