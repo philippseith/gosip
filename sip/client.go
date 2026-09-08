@@ -264,11 +264,12 @@ func parseTryConnectDo[T any](c *client,
 	do func(context.Context) (T, error),
 	options ...RequestOption) (T, error) {
 
-	requestSettings, cancel, err := parseRequestOptions(options...)
+	r, cancel, err := ParseRequestOptions(options...)
 	defer cancel()
 	if err != nil {
 		return *new(T), err
 	}
+	requestSettings := r.asRequestOptions()
 
 	errs := make([]error, 0, requestSettings.retries+1)
 	for i := uint(0); i <= requestSettings.retries; i++ {

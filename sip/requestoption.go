@@ -65,7 +65,7 @@ func (r *requestOptions) GetMetaData(key string) (any, bool) {
 	return r.metaData[key], true
 }
 
-func parseRequestOptions(options ...RequestOption) (*requestOptions, context.CancelFunc, error) {
+func ParseRequestOptions(options ...RequestOption) (RequestOptions, context.CancelFunc, error) {
 	r := &requestOptions{
 		ctx: context.Background(),
 	}
