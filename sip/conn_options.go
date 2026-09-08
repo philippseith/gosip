@@ -118,3 +118,15 @@ func WithWriter(writerFactory func(io.Writer) io.Writer) ConnOption {
 		return nil
 	}
 }
+
+// WithDialBackoff configures the backoff strategy for failed connects. See
+// https://pkg.go.dev/github.com/cenkalti/backoff/v4 for more information about
+// backoff strategies. Default is an exponential backoff, starting with a
+// backoff time of 500ms, exponentially incremented by factor 1.5, with an
+// overall timeout of 10 seconds.
+func WithDialBackoff(backoffFactory func() backoff.BackOff) ConnOption {
+	return func(c *connOptions) error {
+		c.backoffFactory = backoffFactory
+		return nil
+	}
+}
