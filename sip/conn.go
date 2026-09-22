@@ -94,32 +94,59 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 }
 
 func dial(network, address string, options ...ConnOption) (*conn, error) {
-	// Check for WithConnnection option
-	wcOpts := &connOptions{}
-	for _, option := range options {
-		if err := option(wcOpts); err != nil {
-			return nil, errorx.EnsureStackTrace(err)
-		}
+	dialOpts, err := resolveDialOptions(options)
+	if err != nil {
+		return nil, err
 	}
-	if wcOpts.dialCtx == nil {
-		wcOpts.dialCtx = context.Background()
-	}
-	// Fallback to net.Dial
-	if wcOpts.dial == nil {
-		wcOpts.dial = func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
-			var dialer net.Dialer
-			netConn, err := dialer.DialContext(ctx, network, address)
-			if err != nil {
-				err = errorx.EnsureStackTrace(err)
-			}
-			return netConn, err
-		}
-	}
-	netConn, err := wcOpts.dial(wcOpts.dialCtx, network, address)
+	netConn, err := dialOpts.dial(dialOpts.dialCtx, network, address)
 	if err != nil {
 		return nil, err
 	}
 
+	c, err := newConn(netConn, address, options)
+	if err != nil {
+		return nil, err
+	}
+
+	sendRecvCtx := c.startLoops()
+
+	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil {
+		c.cancel(err)
+		_ = c.cleanUp()
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// resolveDialOptions applies options to determine how the net connection is
+// established, falling back to net.Dial without a deadline.
+func resolveDialOptions(options []ConnOption) (*connOptions, error) {
+	opts := &connOptions{}
+	for _, option := range options {
+		if err := option(opts); err != nil {
+			return nil, errorx.EnsureStackTrace(err)
+		}
+	}
+	if opts.dialCtx == nil {
+		opts.dialCtx = context.Background()
+	}
+	if opts.dial == nil {
+		opts.dial = netDial
+	}
+	return opts, nil
+}
+
+func netDial(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+	var dialer net.Dialer
+	netConn, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, errorx.EnsureStackTrace(err)
+	}
+	return netConn, nil
+}
+
+func newConn(netConn io.ReadWriteCloser, address string, options []ConnOption) (*conn, error) {
 	c := &conn{
 		Conn: netConn,
 		connOptions: connOptions{
@@ -145,25 +172,24 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	var sendRecvCtx context.Context
-	sendRecvCtx, c.cancel = context.WithCancelCause(context.Background())
+	return c, nil
+}
 
-	go c.sendLoop(sendRecvCtx, c.cancel)
-	go c.receiveLoop(sendRecvCtx, c.cancel)
+// startLoops starts the send and receive loops and returns the context which is
+// canceled when the connection is torn down.
+func (c *conn) startLoops() context.Context {
+	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+	c.cancel = cancel
+
+	go c.sendLoop(sendRecvCtx, cancel)
+	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
 		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))
 		c.setClosed()
 	}()
 
-	err = c.connect(wcOpts.dialCtx, sendRecvCtx)
-	if err != nil {
-		c.cancel(err)
-		_ = c.cleanUp()
-		return nil, err
-	}
-
-	return c, err
+	return sendRecvCtx
 }
 
 func (c *conn) Close() error {
