@@ -21,7 +21,7 @@ import (
 //	resCh, err := sip.SetIP(ctx, "en0", [6]byte{1,2,3,4,5,6}, net.IPv4(192,168,1,100), net.IPv4(255,255,255,0), net.IPv4(192,168,1,1), true)
 //	if err != nil { log.Fatal(err) }
 //	for res := range resCh { fmt.Println(res) }
-func SetIP(ctx context.Context, interfaceName string, nodeIdentifier [6]byte, ip net.IP, subnet net.IP, gateway net.IP, persist bool) (chan Result[*SetIPResponse], error) {
+func SetIP(ctx context.Context, interfaceName string, nodeIdentifier [6]byte, ip net.IP, gateway net.IP, persist bool) (chan Result[*SetIPResponse], error) {
 	var persitentByte byte
 	if persist {
 		persitentByte = 1
@@ -31,7 +31,7 @@ func SetIP(ctx context.Context, interfaceName string, nodeIdentifier [6]byte, ip
 			NodeIdentifier: nodeIdentifier,
 			MACAddress:     nodeIdentifier,
 			IPAddress:      [4]byte(ip.To4()),
-			Subnet:         [4]byte(subnet.To4()),
+			Subnet:         [4]byte(ip.To4().DefaultMask()),
 			Gateway:        [4]byte(gateway.To4()),
 			Persistent:     persitentByte,
 		},
