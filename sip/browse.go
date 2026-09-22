@@ -1,7 +1,6 @@
 package sip
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -23,100 +22,12 @@ import (
 //  for res := range resCh { fmt.Println(res) }
 
 func Browse(ctx context.Context, interfaceName string) (chan Result[*BrowseResponse], error) {
-
-	browseRequest, err := buildBrowseRequest()
-	if err != nil {
-		return nil, err
-	}
-
-	reqConns, err := getReqConnsForIfc(interfaceName)
-	if err != nil {
-		return nil, err
-	}
-
-	return broadcast(ctx, reqConns, browseRequest,
-		func(conn *net.UDPConn, ch chan<- Result[*BrowseResponse]) bool {
-			return listenUDP(conn, time.Second, func() *BrowseResponse {
-				return &BrowseResponse{}
-			}, ch)
-		}), nil
-}
-
-func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error) {
-	ifcs, err := net.Interfaces()
-	if err != nil {
-		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
-	}
-
-	for _, ifc := range ifcs {
-		if ifc.Name != interfaceName {
-			continue
-		}
-		addrs, err := ifc.Addrs()
-		if err != nil {
-			return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read addresses of interface %s: %w", Error, interfaceName, err))
-		}
-		for _, addr := range addrs {
-			reqConn, err := addrToReqConn(addr)
-			if err != nil {
-				return nil, err
-			}
-			if reqConn == nil {
-				continue
-			}
-			reqConns = append(reqConns, reqConn)
-		}
-	}
-
-	if len(reqConns) == 0 {
-		return nil, errorx.EnsureStackTrace(fmt.Errorf("interface %s has no ipv4 addresses", interfaceName))
-	}
-	return reqConns, nil
-}
-
-func addrToReqConn(addr net.Addr) (*net.UDPConn, error) {
-	ipAddr, ok := addr.(*net.IPNet)
-	if !ok {
-		return nil, nil
-	}
-	ip := ipAddr.IP.To4()
-	if ip == nil {
-		return nil, nil
-	}
-	mask := ipAddr.Mask
-	broadcast := make(net.IP, 4)
-	for i := range 4 {
-		broadcast[i] = ip[i] | ^mask[i]
-	}
-	localAddr := &net.UDPAddr{IP: ip, Port: 0}
-	broadcastAddr := &net.UDPAddr{IP: broadcast, Port: 35021}
-
-	reqConn, err := net.DialUDP("udp", localAddr, broadcastAddr)
-	if err != nil {
-		return nil, errorx.EnsureStackTrace(err)
-	}
-	return reqConn, nil
-}
-
-func buildBrowseRequest() ([]byte, error) {
-	writer := bytes.NewBuffer(make([]byte, 0, 17))
-	br := BrowseRequest{
+	return Broadcast[*BrowseResponse](ctx, interfaceName, &BrowseRequest{
 		IPAddress:          [4]byte(net.IPv4bcast),
 		MasterOnly:         false,
 		LowerSercosAddress: 0,
 		UpperSercosAddress: 511,
-	}
-	hdr := Header{
-		TransactionID: 1,
-		MessageType:   br.MessageType(),
-	}
-	if err := hdr.Write(writer); err != nil {
-		return nil, errorx.EnsureStackTrace(err)
-	}
-	if err := br.Write(writer); err != nil {
-		return nil, errorx.EnsureStackTrace(err)
-	}
-	return writer.Bytes(), nil
+	}, time.Second)
 }
 
 type BrowseRequest struct {

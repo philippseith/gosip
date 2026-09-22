@@ -11,7 +11,7 @@ import (
 	"github.com/joomcode/errorx"
 )
 
-func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse func() T, ch chan<- Result[T]) bool {
+func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, ch chan<- Result[T]) bool {
 	err := conn.SetReadDeadline(time.Now().Add(timeout))
 	if err != nil {
 		ch <- Err[T](errorx.EnsureStackTrace(err))
@@ -34,10 +34,11 @@ func listenUDP[T PDU](conn net.PacketConn, timeout time.Duration, newResponse fu
 	reader := bytes.NewReader(buf[:n])
 	hdr := Header{}
 	err = hdr.Read(reader)
-	if err != nil || hdr.MessageType != newResponse().MessageType() {
+	msgType := MessageTypeOf[T]()
+	if err != nil || hdr.MessageType != msgType {
 		return true
 	}
-	resp := newResponse()
+	resp := NewResponse[T](msgType)
 	err = resp.Read(reader)
 	if err == nil {
 		ch <- Ok(resp)
