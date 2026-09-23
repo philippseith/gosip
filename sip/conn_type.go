@@ -24,6 +24,9 @@ type conn struct {
 	respChans map[uint32]chan func(PDU) error
 	mxRC      sync.RWMutex
 
+	reqDeadlines map[uint32]time.Time
+	mxRD         sync.Mutex
+
 	connectResponse ConnectResponse
 	mxCR            sync.RWMutex
 
@@ -35,6 +38,7 @@ type conn struct {
 }
 
 type request struct {
-	write func(conn io.Writer) (transactionId uint32, err error)
-	ch    chan func(PDU) error
+	write    func(conn io.Writer) (transactionId uint32, err error)
+	ch       chan func(PDU) error
+	deadline time.Time
 }

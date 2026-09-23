@@ -95,7 +95,7 @@ func (c connServer) serve(ctx context.Context) {
 	}
 }
 
-func (c connServer) handleMessages() error {
+func (c connServer) handleMessages() error { // nolint:cyclop
 	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)); err != nil {
 		return errorx.EnsureStackTrace(err)
 	}

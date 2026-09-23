@@ -15,6 +15,13 @@ func (s SimpleSyncClient) Ping(...sip.RequestOption) error {
 	return nil
 }
 
+func WithAnything(key string, value any) sip.RequestOption {
+	return func(r sip.RequestOptions) error {
+		r.SetMetaData(key, value)
+		return nil
+	}
+}
+
 func (s SimpleSyncClient) ReadEverything(_, _ int, _ uint32, _ ...sip.RequestOption) (sip.ReadEverythingResponse, error) {
 	<-time.After(10 * time.Millisecond) // Simulate some delay
 	buf := make([]byte, 16)
