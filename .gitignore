@@ -24,3 +24,4 @@ go.work
 .idea
 sip/testdata/test_config.json
 .pi-lens/
+.aider*
