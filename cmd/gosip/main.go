@@ -47,6 +47,16 @@ type globalFlags struct {
 	verbose      bool
 }
 
+func newFlagSet(name string) *pflag.FlagSet {
+	fs := pflag.NewFlagSet(name, pflag.ContinueOnError)
+	fs.SortFlags = false
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: %s [flags]\n", name)
+		fs.PrintDefaults()
+	}
+	return fs
+}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
@@ -184,8 +194,7 @@ func parseTarget(name string, args []string, extra func(*pflag.FlagSet)) (target
 	var t target
 	var idnStr string
 
-	fs := pflag.NewFlagSet(name, pflag.ContinueOnError)
-	fs.SortFlags = false
+	fs := newFlagSet(name)
 	fs.StringVarP(&idnStr, "idn", "i", "", `[mandatory] IDN, either numeric (4106, 0x100A) or Sercos notation (S-0-0095.0.0)`)
 	if extra != nil {
 		extra(fs)
@@ -208,7 +217,7 @@ func parseTarget(name string, args []string, extra func(*pflag.FlagSet)) (target
 }
 
 func doPing(client sip.Client, args []string, options []sip.RequestOption) error {
-	fs := pflag.NewFlagSet("ping", pflag.ContinueOnError)
+	fs := newFlagSet("ping")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -318,8 +327,7 @@ func doBrowse(args []string) error {
 	var interfaceName string
 	var listen time.Duration
 
-	fs := pflag.NewFlagSet("browse", pflag.ContinueOnError)
-	fs.SortFlags = false
+	fs := newFlagSet("browse")
 	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
 	fs.DurationVarP(&listen, "listen", "l", 3*time.Second, "[optional] how long to listen for responses")
 	if err := fs.Parse(args); err != nil {
@@ -376,8 +384,7 @@ func doIdentify(args []string) error {
 	var interfaceName, nodeStr string
 	var listen time.Duration
 
-	fs := pflag.NewFlagSet("identify", pflag.ContinueOnError)
-	fs.SortFlags = false
+	fs := newFlagSet("identify")
 	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
 	fs.StringVarP(&nodeStr, "node", "n", "", "[mandatory] node identifier of the device, e.g. 00:11:22:33:44:55")
 	fs.DurationVarP(&listen, "listen", "l", 3*time.Second, "[optional] how long to listen for responses")
@@ -408,8 +415,7 @@ func doSetIP(args []string) error {
 	var persist bool
 	var listen time.Duration
 
-	fs := pflag.NewFlagSet("setip", pflag.ContinueOnError)
-	fs.SortFlags = false
+	fs := newFlagSet("setip")
 	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
 	fs.StringVarP(&nodeStr, "node", "n", "", "[mandatory] node identifier of the device, e.g. 00:11:22:33:44:55")
 	fs.StringVarP(&ipStr, "ip", "p", "", "[mandatory] IPv4 address to set, e.g. 192.168.1.100")
