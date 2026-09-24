@@ -28,6 +28,24 @@ To ping a device at its S/IP address:
 gosip --address 192.168.1.50:35021 ping
 ```
 
+To read the full data set for an IDN, including metadata and values:
+
+```bash
+gosip --address 192.168.1.50:35021 readeverything --idn S-0-0095.0.0
+```
+
+To read only the raw data bytes of an IDN:
+
+```bash
+gosip --address 192.168.1.50:35021 readonlydata --idn 0x100A
+```
+
+To write raw parameter data as a hexadecimal byte string:
+
+```bash
+gosip --address 192.168.1.50:35021 writedata --idn S-0-0095.0.0 --data 00112233
+```
+
 To identify a device on a specific network interface:
 
 ```bash
