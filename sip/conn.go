@@ -98,7 +98,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	if err != nil {
 		return nil, err
 	}
-	netConn, err := dialOpts.dial(dialOpts.dialCtx, network, address)
+	netConn, err := dialOpts.dial(dialOpts.dialCtx, network, address) // nolint:contextcheck
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +110,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 
 	sendRecvCtx := c.startLoops()
 
-	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil {
-		c.cancel(err)
+	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck 
 		_ = c.cleanUp()
 		return nil, err
 	}

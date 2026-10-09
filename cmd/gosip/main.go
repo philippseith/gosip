@@ -363,21 +363,24 @@ func doBrowse(args []string) error {
 			continue
 		}
 		count++
-		b := result.Ok
-		fmt.Printf("device %d\n", count)
-		fmt.Printf("  DisplayName:    %s\n", string(b.DisplayName))
-		fmt.Printf("  HostName:       %s\n", string(b.HostName))
-		fmt.Printf("  NodeIdentifier: %s\n", formatMAC(b.NodeIdentifier))
-		fmt.Printf("  MacAddress:     %s\n", formatMAC(b.MacAddress))
-		fmt.Printf("  IPAddress:      %s\n", net.IP(b.IPAddress[:]))
-		fmt.Printf("  Subnet:         %s\n", net.IP(b.Subnet[:]))
-		fmt.Printf("  Gateway:        %s\n", net.IP(b.Gateway[:]))
-		fmt.Printf("  DHCPMode:       %d\n", b.DHCPMode)
-		fmt.Printf("  DHCPFeatures:   0x%02x\n", b.DHCPFeatures)
-		fmt.Printf("  Version:        %d\n", b.Version)
+		printBrowseResponse(count, result.Ok)
 	}
 	fmt.Printf("%d device(s) found\n", count)
 	return nil
+}
+
+func printBrowseResponse(count int, response *sip.BrowseResponse) {
+	fmt.Printf("device %d\n", count)
+	fmt.Printf("  DisplayName:    %s\n", string(response.DisplayName))
+	fmt.Printf("  HostName:       %s\n", string(response.HostName))
+	fmt.Printf("  NodeIdentifier: %s\n", formatMAC(response.NodeIdentifier))
+	fmt.Printf("  MacAddress:     %s\n", formatMAC(response.MacAddress))
+	fmt.Printf("  IPAddress:      %s\n", net.IP(response.IPAddress[:]))
+	fmt.Printf("  Subnet:         %s\n", net.IP(response.Subnet[:]))
+	fmt.Printf("  Gateway:        %s\n", net.IP(response.Gateway[:]))
+	fmt.Printf("  DHCPMode:       %d\n", response.DHCPMode)
+	fmt.Printf("  DHCPFeatures:   0x%02x\n", response.DHCPFeatures)
+	fmt.Printf("  Version:        %d\n", response.Version)
 }
 
 func doIdentify(args []string) error {
