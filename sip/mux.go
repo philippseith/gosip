@@ -13,9 +13,8 @@ import (
 // limited resources and can't handle a larger number of multiple connections.
 //
 // Example:
-//  mux := sip.NewMux(existingSyncClient)
-//  // Use mux as a SyncClient for concurrent reachable Serve calls.
-
+//
+//	mux := sip.NewMux(existingSyncClient)
 func NewMux(source SyncClient) SyncClient {
 	return &mux{
 		source: source,
