@@ -11,7 +11,7 @@ import (
 )
 
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()
@@ -25,7 +25,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestConnectNoServer(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35022")
+	conn, err := sip.Dial(context.Background(), "tcp", "localhost:35022")
 	defer func() {
 		if conn != nil {
 			if conn != nil {
@@ -39,13 +39,13 @@ func TestConnectNoServer(t *testing.T) {
 
 func _TestConnectTimeout(t *testing.T) {
 	// This does only work with relatively slow sip servers. IndraDrive is able to answer in less than 1ms :-)
-	_, err := sip.Dial("tcp", serverAddress, sip.WithBusyTimeout(1))
+	_, err := sip.Dial(context.Background(), "tcp", serverAddress, sip.WithBusyTimeout(1))
 
 	assert.Error(t, err)
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()
@@ -60,7 +60,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestPingShortClosedConnection(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NotNil(t, conn)
 	assert.NoError(t, err)

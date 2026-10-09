@@ -101,7 +101,7 @@ func TestDecode(t *testing.T) {
 }
 
 func _TestP1354(t *testing.T) {
-	conn, err := Dial("tcp", "192.168.112.14:35021", WithBusyTimeout(5000))
+	conn, err := Dial(context.Background(),	"tcp", "192.168.112.14:35021", WithBusyTimeout(5000))
 	assert.NoError(t, err)
 
 	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 0x8000+1354)
