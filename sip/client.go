@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -299,7 +298,7 @@ func parseTryConnectDo[T any](c *client,
 
 func extendTimeoutError(err error, timeout time.Duration) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return errors.Join(fmt.Errorf("%w: %v", err, timeout), err)
+		return fmt.Errorf("%w: %v", ErrorTimeout, timeout)
 	}
 	if errors.Is(err, ErrorTimeout) {
 		return fmt.Errorf("%w: %v", err, timeout)
@@ -343,6 +342,7 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 	select {
 	case <-ctx.Done():
 		logger.Printf("%s: waitForDial = %v", c.address, ErrorTimeout)
+		c.Close()
 		return errorx.EnsureStackTrace(ErrorTimeout)
 	case result := <-ch:
 		if result.Err == nil {
@@ -358,13 +358,13 @@ func (c *client) waitForDialWithBackoff(ctx context.Context, ch <-chan Result[Co
 
 			return nil
 		}
+		// When dialing failed, ensure client state and backoff are cleaned up
+		c.Close()
 		// Error-specific handling
 		if errors.Is(result.Err, context.DeadlineExceeded) {
 			return ErrorTimeout
 		}
 		if errors.Is(result.Err, ErrorRetriesExceeded) {
-			// When the backoff has been exhausted, the connection has to be closed
-			c.Close()
 			return result.Err
 		}
 		return errorx.EnhanceStackTrace(result.Err, "waitForDialWithBackoff")
@@ -380,15 +380,9 @@ func dialWithBackOff(ctx context.Context, ch chan Result[Conn], network string, 
 		logger.Printf("%s: dial", address)
 		// ctx is for canceling the request, not the whole connection, so we silence contextchecks complains.
 		// nolint:contextcheck
-		conn, err := Dial(network, address, options...) // This might hang until the stack decices it is done or failed
+		conn, err := Dial(ctx, network, address, options...) // This might hang until the stack decices it is done or failed
 		if err == nil {
 			ch <- Ok(conn)
-			return
-		}
-
-		// On Connection refused, a backoff will be useless
-		if errors.Is(err, syscall.ECONNREFUSED) {
-			ch <- Err[Conn](errorx.EnsureStackTrace(err))
 			return
 		}
 

@@ -83,8 +83,8 @@ type ConnProperties interface {
 //	if err != nil { log.Fatal(err) }
 //	defer conn.Close()
 //	resp, err := conn.ReadEverything(context.Background(), 0, 0, 0x123456)
-func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	c, err := dial(network, address, options...)
+func Dial(ctx context.Context, network, address string, options ...ConnOption) (Conn, error) {
+	c, err := dial(ctx, network, address, options...)
 	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
 	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
 	if c == nil {
@@ -93,8 +93,8 @@ func Dial(network, address string, options ...ConnOption) (Conn, error) {
 	return c, err
 }
 
-func dial(network, address string, options ...ConnOption) (*conn, error) {
-	dialOpts, err := resolveDialOptions(options)
+func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
+	dialOpts, err := resolveDialOptions(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -121,15 +121,14 @@ func dial(network, address string, options ...ConnOption) (*conn, error) {
 
 // resolveDialOptions applies options to determine how the net connection is
 // established, falling back to net.Dial without a deadline.
-func resolveDialOptions(options []ConnOption) (*connOptions, error) {
-	opts := &connOptions{}
+func resolveDialOptions(ctx context.Context, options []ConnOption) (*connOptions, error) {
+	opts := &connOptions{
+		dialCtx: ctx,
+	}
 	for _, option := range options {
 		if err := option(opts); err != nil {
 			return nil, errorx.EnsureStackTrace(err)
 		}
-	}
-	if opts.dialCtx == nil {
-		opts.dialCtx = context.Background()
 	}
 	if opts.dial == nil {
 		opts.dial = netDial
