@@ -10,6 +10,11 @@ import (
 	"github.com/joomcode/errorx"
 )
 
+type requestConn struct {
+	conn          *net.UDPConn
+	broadcastAddr *net.UDPAddr
+}
+
 // Broadcast sends request on all broadcast addresses of interfaceName and collects
 // the responses of type TResp. timeout is the interval after which listening is
 // interrupted to check whether ctx has been canceled.
@@ -42,7 +47,7 @@ func Broadcast[TResp PDU, TReq PDU](ctx context.Context, interfaceName string, r
 	return ch, nil
 }
 
-func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error) {
+func getReqConnsForIfc(interfaceName string) (reqConns []*requestConn, err error) {
 	ifcs, err := net.Interfaces()
 	if err != nil {
 		return nil, errorx.EnsureStackTrace(fmt.Errorf("%w: Can not read system interfaces %w", Error, err))
@@ -74,7 +79,7 @@ func getReqConnsForIfc(interfaceName string) (reqConns []*net.UDPConn, err error
 	return reqConns, nil
 }
 
-func addrToReqConn(addr net.Addr) (*net.UDPConn, error) {
+func addrToReqConn(addr net.Addr) (*requestConn, error) {
 	ipAddr, ok := addr.(*net.IPNet)
 	if !ok {
 		return nil, nil
@@ -88,40 +93,26 @@ func addrToReqConn(addr net.Addr) (*net.UDPConn, error) {
 	for i := range 4 {
 		broadcast[i] = ip[i] | ^mask[i]
 	}
-	localAddr := &net.UDPAddr{IP: ip, Port: 0}
 	broadcastAddr := &net.UDPAddr{IP: broadcast, Port: 35021}
 
-	reqConn, err := net.DialUDP("udp", localAddr, broadcastAddr)
+	// Keep the socket bound while sending so fast replies cannot arrive between
+	// closing the sender and binding a receiver to its ephemeral port.
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero})
 	if err != nil {
 		return nil, errorx.EnsureStackTrace(err)
 	}
-	return reqConn, nil
+	return &requestConn{conn: conn, broadcastAddr: broadcastAddr}, nil
 }
 
-func broadcast[TResp PDU](ctx context.Context, wg *sync.WaitGroup, conn *net.UDPConn, requestBytes []byte, ch chan Result[TResp], timeout time.Duration) {
+func broadcast[TResp PDU](ctx context.Context, wg *sync.WaitGroup, conn *requestConn, requestBytes []byte, ch chan Result[TResp], timeout time.Duration) {
 	defer wg.Done()
+	defer conn.conn.Close()
 
-	localPort := conn.LocalAddr().(*net.UDPAddr).Port
-	_, err := conn.Write(requestBytes)
+	_, err := conn.conn.WriteToUDP(requestBytes, conn.broadcastAddr)
 	if err != nil {
 		ch <- Err[TResp](errorx.EnsureStackTrace(err))
 		return
 	}
-	// The drives are responding on our local port but with the broadcast address.
-	// To allow listening on the port, we need to close the sending connection
-	// and open a new one for listening.
-	if err := conn.Close(); err != nil {
-		ch <- Err[TResp](errorx.EnsureStackTrace(err))
-		return
-	}
-
-	listenAddr := &net.UDPAddr{IP: net.IPv4zero, Port: localPort}
-	respConn, err := net.ListenUDP("udp", listenAddr)
-	if err != nil {
-		ch <- Err[TResp](errorx.EnsureStackTrace(err))
-		return
-	}
-	defer respConn.Close()
 
 	for {
 		select {
@@ -129,7 +120,7 @@ func broadcast[TResp PDU](ctx context.Context, wg *sync.WaitGroup, conn *net.UDP
 			return
 		default:
 			// Blocks until a reponse comes in or the timeout elapses
-			if !listenUDP(respConn, timeout, ch) {
+			if !listenUDP(conn.conn, timeout, ch) {
 				return
 			}
 		}
