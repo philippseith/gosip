@@ -4,14 +4,21 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
+	"time"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 // Serve creates a server which listens on the given listener and forwards the S/IP requests to the source.
+//
+// Example:
+//  ln, _ := net.Listen("tcp", ":35021")
+//  err := sip.Serve(ctx, ln, mySyncClient)
+
 func Serve(ctx context.Context, listener net.Listener, source SyncClient, options ...ConnOption) error {
-	server := &connServer{
+	serverTemplate := &connServer{
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
@@ -20,28 +27,41 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 	}
 
 	for _, option := range options {
-		if err := option(&server.connOptions); err != nil {
-			return errtrace.Wrap(err)
+		if err := option(&serverTemplate.connOptions); err != nil {
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 
 	go func() {
+		stop := context.AfterFunc(ctx, func() {
+			// listener may already be closed by the caller; recover from
+			// panicking Close implementations (e.g., channel-based test
+			// listeners) and ignore the error either way.
+			defer func() { recover() }() //nolint:errcheck
+			listener.Close()
+		})
+		defer stop()
+
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				conn, err := listener.Accept()
+			conn, err := listener.Accept()
+			if err != nil {
 				if ctx.Err() != nil {
-					conn.Close()
 					return
 				}
-				if err != nil {
-					continue
-				}
-				server.conn = conn
-				go server.serve(ctx)
+				log.Printf("accept: %+v", err)
+				continue
 			}
+			server := *serverTemplate
+			server.conn = conn
+			if serverTemplate.maxConnectionsCh != nil {
+				serverTemplate.maxConnectionsCh <- struct{}{}
+			}
+			go func() {
+				if serverTemplate.maxConnectionsCh != nil {
+					defer func() { <-serverTemplate.maxConnectionsCh }()
+				}
+				server.serve(ctx)
+			}()
 		}
 	}()
 	return nil
@@ -65,14 +85,20 @@ func (c connServer) serve(ctx context.Context) {
 				return
 			}
 			if err := c.handleMessages(); err != nil {
-				logger.Printf("%v: %v", c.conn.RemoteAddr(), err)
+				if !errors.Is(err, io.EOF) {
+					// EOF is expected when the client closes the connection, everything else should be logged
+					logger.Printf("%v: %+v", c.conn.RemoteAddr(), err)
+				}
 				return
 			}
 		}
 	}
 }
 
-func (c connServer) handleMessages() error {
+func (c connServer) handleMessages() error { // nolint:cyclop
+	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
 	h := &Header{}
 	err := h.Read(c.conn)
 	if err != nil {
@@ -134,7 +160,7 @@ func (c connServer) handlePing(transactionID uint32) error {
 
 func (c connServer) handleDataState(transactionID uint32) error {
 	req := ReadDataStateRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadDataState(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -143,7 +169,7 @@ func (c connServer) handleDataState(transactionID uint32) error {
 
 func (c connServer) handleDescription(transactionID uint32) error {
 	req := ReadDescriptionRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadDescription(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -152,7 +178,7 @@ func (c connServer) handleDescription(transactionID uint32) error {
 
 func (c connServer) handleReadEverything(transactionID uint32) error {
 	req := ReadEverythingRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadEverything(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -161,7 +187,7 @@ func (c connServer) handleReadEverything(transactionID uint32) error {
 
 func (c connServer) handleReadOnlyData(transactionID uint32) error {
 	req := ReadOnlyDataRequest{}
-	return c.parseAndReadRequestAndWriteResponse(c.conn, &req, Request(req),
+	return c.parseAndReadRequestAndWriteResponse(c.conn, &req,
 		func(slaveIndex, slaveExtension uint16, idn uint32) (PDU, error) {
 			resp, err := c.source.ReadOnlyData(int(slaveIndex), int(slaveExtension), idn)
 			return &resp, err
@@ -176,7 +202,7 @@ func (c connServer) handleWriteData(transactionID uint32) error {
 	err := c.source.WriteData(int(req.SlaveIndex), int(req.SlaveExtension), req.IDN, req.Data)
 	ex := Exception{}
 	if errors.As(err, &ex) {
-		return ex.Write(c.conn)
+		return c.writeWithHeader(&ex, transactionID)
 	}
 	if err == nil {
 		resp := &WriteDataResponse{}
@@ -185,16 +211,17 @@ func (c connServer) handleWriteData(transactionID uint32) error {
 	return err
 }
 
-func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser, reqPDU PDU,
-	req Request, read func(uint16, uint16, uint32) (PDU, error), transactionID uint32) error {
+func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser, reqPDU RequestPDU,
+	read func(uint16, uint16, uint32) (PDU, error), transactionID uint32) error {
 	err := reqPDU.Read(conn)
 	if err != nil {
 		return err
 	}
+	req := reqPDU.Target()
 	resp, err := read(req.SlaveIndex, req.SlaveExtension, req.IDN)
 	ex := Exception{}
 	if errors.As(err, &ex) {
-		return ex.Write(c.conn)
+		return c.writeWithHeader(&ex, transactionID)
 	}
 	if err == nil {
 		return c.writeWithHeader(resp, transactionID)

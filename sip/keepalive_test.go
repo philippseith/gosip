@@ -5,13 +5,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestNoKeepAlive(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
-	defer func() { _ = conn.Close() }()
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.NoError(t, err)
 
@@ -27,8 +32,12 @@ func TestNoKeepAlive(t *testing.T) {
 }
 
 func TestKeepAlive(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress, sip.WithSendKeepAlive())
-	defer func() { _ = conn.Close() }()
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress, sip.WithSendKeepAlive())
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.NoError(t, err)
 

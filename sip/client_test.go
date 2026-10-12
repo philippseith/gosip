@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestClientReconnectLeaseExceeded(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress)
+	c, err := sip.NewClient("tcp", serverAddress)
+	assert.NoError(t, err)
 	assert.NoError(t, c.Ping())
 	assert.NoError(t, c.Ping())
 	log.Printf("Waiting %v", c.LeaseTimeout())
@@ -20,7 +22,8 @@ func TestClientReconnectLeaseExceeded(t *testing.T) {
 }
 
 func TestStress(t *testing.T) {
-	c := sip.NewClient("tcp", serverAddress)
+	c, err := sip.NewClient("tcp", serverAddress)
+	assert.NoError(t, err)
 	// the sequentialized version should be no stress at all
 	// c := sip.NewClient("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 	defer c.Close()

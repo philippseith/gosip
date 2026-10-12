@@ -1,9 +1,10 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"encoding/binary"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 type Header struct {
@@ -12,9 +13,15 @@ type Header struct {
 }
 
 func (h *Header) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, h))
+	if err := binary.Read(reader, binary.LittleEndian, h); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (h *Header) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *h))
+	if err := binary.Write(writer, binary.LittleEndian, *h); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }

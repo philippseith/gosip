@@ -1,3 +1,9 @@
+// Package sip implements the Sercos Internet Protocol (S/IP), used for communicating
+// and managing parameter data over Sercos devices via TCP and UDP.
+// Features include reading/writing parameters, device browsing, multiplexing for servers,
+// automatic reconnect clients, and error handling with stack traces.
+// Use NewClient for a reconnecting client, or Serve to host a S/IP server.
+// See examples on exported functions for typical usage.
 package sip
 
 import (
@@ -7,7 +13,7 @@ import (
 	"net"
 	"time"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 // Conn is a SIP client connection. It can be used to read and write SERCOS
@@ -70,29 +76,75 @@ type ConnProperties interface {
 }
 
 // Dial opens a Conn and connects it.
-func Dial(network, address string, options ...ConnOption) (Conn, error) {
-	return dial(context.Background(), network, address, options...)
+//
+// Example:
+//
+//	conn, err := sip.Dial("tcp", "192.168.1.1:35021")
+//	if err != nil { log.Fatal(err) }
+//	defer conn.Close()
+//	resp, err := conn.ReadEverything(context.Background(), 0, 0, 0x123456)
+func Dial(ctx context.Context, network, address string, options ...ConnOption) (Conn, error) {
+	c, err := dial(ctx, network, address, options...)
+	// See https://www.reddit.com/r/golang/comments/1bu5r72/subtle_and_surprising_behavior_when_interface/
+	// A nil reference to conn is not the same as a nil Conn and can not compared to nil if returned als Conn
+	if c == nil {
+		return nil, err
+	}
+	return c, err
 }
 
 func dial(ctx context.Context, network, address string, options ...ConnOption) (*conn, error) {
-	// Check for WithConnnection option
-	wcOpts := &connOptions{}
-	for _, option := range options {
-		if err := option(wcOpts); err != nil {
-			return nil, errtrace.Wrap(err)
-		}
-	}
-	// Fallback to net.Dial
-	if wcOpts.dial == nil {
-		wcOpts.dial = func(network, address string) (io.ReadWriteCloser, error) {
-			return net.Dial(network, address)
-		}
-	}
-	netConn, err := wcOpts.dial(network, address)
+	dialOpts, err := resolveDialOptions(ctx, options)
 	if err != nil {
-		return nil, errtrace.Wrap(err)
+		return nil, err
+	}
+	netConn, err := dialOpts.dial(dialOpts.dialCtx, network, address) // nolint:contextcheck
+	if err != nil {
+		return nil, err
 	}
 
+	c, err := newConn(netConn, address, options)
+	if err != nil {
+		return nil, err
+	}
+
+	sendRecvCtx := c.startLoops()
+
+	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck 
+		_ = c.cleanUp()
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// resolveDialOptions applies options to determine how the net connection is
+// established, falling back to net.Dial without a deadline.
+func resolveDialOptions(ctx context.Context, options []ConnOption) (*connOptions, error) {
+	opts := &connOptions{
+		dialCtx: ctx,
+	}
+	for _, option := range options {
+		if err := option(opts); err != nil {
+			return nil, errorx.EnsureStackTrace(err)
+		}
+	}
+	if opts.dial == nil {
+		opts.dial = netDial
+	}
+	return opts, nil
+}
+
+func netDial(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+	var dialer net.Dialer
+	netConn, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, errorx.EnsureStackTrace(err)
+	}
+	return netConn, nil
+}
+
+func newConn(netConn io.ReadWriteCloser, address string, options []ConnOption) (*conn, error) {
 	c := &conn{
 		Conn: netConn,
 		connOptions: connOptions{
@@ -104,6 +156,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
+		closedCh:             make(chan struct{}),
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
@@ -111,31 +164,38 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	// But what does the user want?
 	for _, option := range options {
 		if err := option(&c.connOptions); err != nil {
-			return nil, errtrace.Wrap(err)
+			return nil, errorx.EnsureStackTrace(err)
 		}
 	}
 	// we use userBusy as BusyTimeout until the server responded
 	c.connectResponse.BusyTimeout = c.userBusyTimeout
 
-	sendRecvCtx, cancel := context.WithCancelCause(ctx)
+	return c, nil
+}
+
+// startLoops starts the send and receive loops and returns the context which is
+// canceled when the connection is torn down.
+func (c *conn) startLoops() context.Context {
+	sendRecvCtx, cancel := context.WithCancelCause(context.Background())
+	c.cancel = cancel
 
 	go c.sendLoop(sendRecvCtx, cancel)
 	go c.receiveLoop(sendRecvCtx, cancel)
 	go func() {
 		<-sendRecvCtx.Done()
-		c.cancelAllRequests(errtrace.Wrap(context.Cause(sendRecvCtx)))
+		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))
 		c.setClosed()
 	}()
 
-	return c, errtrace.Wrap(c.connect(ctx))
+	return sendRecvCtx
 }
 
 func (c *conn) Close() error {
 	if c.cancel != nil {
-		c.cancel(ErrorClosed)
+		c.cancel(errorx.EnsureStackTrace(ErrorClosed))
 	}
 	c.setClosed()
-	return errtrace.Wrap(c.cleanUp())
+	return c.cleanUp()
 }
 
 func (c *conn) setClosed() {
@@ -187,50 +247,61 @@ func (c *conn) MessageTypes() []uint32 {
 	c.mxCR.RLock()
 	defer c.mxCR.RUnlock()
 
-	return c.connectResponse.MessageTypes
+	return append([]uint32(nil), c.connectResponse.MessageTypes...)
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	return errtrace.Wrap(sendRequestWaitForResponseAndRead[*PingResponse](ctx, c, &PingRequest{}, &PingResponse{}))
+	return sendRequestWaitForResponseAndRead(ctx, c, &PingRequest{}, &PingResponse{})
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadEverythingResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadOnlyDataResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadDescriptionResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
-	err := sendRequestWaitForResponseAndRead[*ReadDataStateResponse](ctx, c, req, resp)
-	return *resp, errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
+	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	err := sendRequestWaitForResponseAndRead[*WriteDataResponse](ctx, c, &WriteDataRequest{
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	u16slaveIndex := uint16(slaveIndex)
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
+	}
+	u16slaveExtension := uint16(slaveExtension)
+	if len(data) > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
+	}
+	err := sendRequestWaitForResponseAndRead(ctx, c, &WriteDataRequest{
 		writeDataRequest: writeDataRequest{
 			Request: Request{
-				SlaveIndex:     uint16(slaveIndex),
-				SlaveExtension: uint16(slaveExtension),
+				SlaveIndex:     u16slaveIndex,
+				SlaveExtension: u16slaveExtension,
 				IDN:            idn,
 			},
-			DataLength: uint32(len(data)),
+			DataLength: uint32(len(data)), //nolint:gosec
 		},
 		Data: data,
 	}, &WriteDataResponse{})
-	return errtrace.Wrap(wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn))
+	return wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {

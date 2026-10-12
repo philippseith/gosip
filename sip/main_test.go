@@ -9,6 +9,8 @@ import (
 
 var interfaceName string
 var serverAddress string
+var identifyNode [6]byte
+var setIPNode [6]byte
 
 func TestMain(m *testing.M) {
 	viper.SetConfigFile("testdata/test_config.json")
@@ -19,6 +21,12 @@ func TestMain(m *testing.M) {
 
 	interfaceName = viper.GetString("interfaceName")
 	serverAddress = viper.GetString("serverAddress")
+	for i, v := range viper.GetIntSlice("identifyNode") {
+		identifyNode[i] = byte(v)
+	}
+	for i, v := range viper.GetIntSlice("setIPNode") {
+		setIPNode[i] = byte(v)
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	m.Run()

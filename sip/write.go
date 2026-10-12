@@ -1,9 +1,11 @@
 package sip
 
 import (
-	"braces.dev/errtrace"
 	"encoding/binary"
+	"fmt"
 	"io"
+
+	"github.com/joomcode/errorx"
 )
 
 type WriteDataRequest struct {
@@ -18,19 +20,27 @@ type writeDataRequest struct {
 func (w *WriteDataRequest) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &w.writeDataRequest)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
+	}
+	if w.DataLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: DataLength %d exceeds maximum %d", Error, w.DataLength, maxPDUFieldLength))
 	}
 	w.Data = make([]byte, w.DataLength)
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, w.Data))
+	if err = binary.Read(reader, binary.LittleEndian, w.Data); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (w *WriteDataRequest) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, w.writeDataRequest)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if w.DataLength > 0 {
-		return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, w.Data))
+		if err = binary.Write(writer, binary.LittleEndian, w.Data); err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }

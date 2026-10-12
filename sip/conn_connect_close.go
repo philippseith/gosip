@@ -4,23 +4,23 @@ import (
 	"context"
 	"time"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
-func (c *conn) connect(ctx context.Context) error {
+func (c *conn) connect(dialCtx context.Context, sendRecvCtx context.Context) error {
 	// TODO detect network latency and add it to the busy timeout
 	c.timeoutReader.SetTimeout(time.Duration(c.userBusyTimeout) * time.Millisecond)
 	select {
-	case <-ctx.Done():
-		return errtrace.Wrap(ctx.Err())
-	case respFunc := <-c.sendRequest(&ConnectRequest{
+	case <-dialCtx.Done():
+		return errorx.EnsureStackTrace(dialCtx.Err())
+	case respFunc := <-c.sendRequest(dialCtx, &ConnectRequest{
 		Version:      1,
 		BusyTimeout:  c.userBusyTimeout,
 		LeaseTimeout: c.userLeaseTimeout,
 	}):
 		respPdu := &ConnectResponse{}
 		if err := respFunc(respPdu); err != nil {
-			return errtrace.Wrap(err)
+			return err
 		}
 		func() {
 			c.mxCR.Lock()
@@ -30,7 +30,7 @@ func (c *conn) connect(ctx context.Context) error {
 			c.timeoutReader.SetTimeout(time.Duration(c.connectResponse.BusyTimeout) * time.Millisecond)
 			// Eventually start the KeepAlive loop
 			if c.sendKeepAlive {
-				go c.sendKeepAliveLoop(ctx)
+				go c.sendKeepAliveLoop(sendRecvCtx)
 			}
 		}()
 		return nil
@@ -68,7 +68,7 @@ func (c *conn) cancelAllRequests(err error) {
 	defer c.mxRC.Unlock()
 
 	errFunc := func(PDU) error {
-		return errtrace.Wrap(err)
+		return err
 	}
 	for _, ch := range c.respChans {
 		cch := ch
@@ -85,15 +85,24 @@ func (c *conn) cleanUp() (err error) {
 		c.reqCh = nil
 	}
 	if c.transactionStartedCh != nil {
+		close(c.transactionStartedCh)
 		c.transactionStartedCh = nil
 	}
 	if c.concurrentTransactionLimitCh != nil {
+		close(c.concurrentTransactionLimitCh)
 		c.concurrentTransactionLimitCh = nil
+	}
+	if c.closedCh != nil {
+		close(c.closedCh)
+		c.closedCh = nil
 	}
 
 	if c.Conn != nil {
 		err = c.Conn.Close()
+		if err != nil {
+			err = errorx.EnsureStackTrace(err)
+		}
 		c.Conn = nil
 	}
-	return errtrace.Wrap(err)
+	return err
 }

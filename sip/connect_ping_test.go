@@ -5,39 +5,52 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestConnect(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
-	defer func() { _ = conn.Close() }()
-
-	assert.NoError(t, err)
-	assert.NotEmpty(t, conn.MessageTypes())
-}
-
-func TestConnectNoServer(t *testing.T) {
-	conn, err := sip.Dial("tcp", "localhost:35022")
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()
 		}
 	}()
 
+	assert.NoError(t, err)
+	if conn != nil {
+		assert.NotEmpty(t, conn.MessageTypes())
+	}
+}
+
+func TestConnectNoServer(t *testing.T) {
+	conn, err := sip.Dial(context.Background(), "tcp", "localhost:35022")
+	defer func() {
+		if conn != nil {
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}
+	}()
+
 	assert.Error(t, err)
 }
 
-func TestConnectTimeout(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress, sip.WithBusyTimeout(1))
+func _TestConnectTimeout(t *testing.T) {
+	// This does only work with relatively slow sip servers. IndraDrive is able to answer in less than 1ms :-)
+	_, err := sip.Dial(context.Background(), "tcp", serverAddress, sip.WithBusyTimeout(1))
 
-	assert.Nil(t, conn)
 	assert.Error(t, err)
 }
 
 func TestPing(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
-	defer func() { _ = conn.Close() }()
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.NoError(t, err)
 
@@ -47,7 +60,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestPingShortClosedConnection(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NotNil(t, conn)
 	assert.NoError(t, err)

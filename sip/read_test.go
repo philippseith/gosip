@@ -4,25 +4,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"log"
 	"sync"
 	"testing"
 	"time"
 
-	"braces.dev/errtrace"
-	"github.com/philippseith/gosip/sip"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/philippseith/gosip/sip"
 )
 
 func TestReadEverything(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadEverything(context.Background(), 0, 0, 1)
 
@@ -31,13 +34,17 @@ func TestReadEverything(t *testing.T) {
 }
 
 func TestReadOnlyData(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1)
 
@@ -46,13 +53,17 @@ func TestReadOnlyData(t *testing.T) {
 }
 
 func TestReadDescription(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	resp, err := conn.ReadDescription(context.Background(), 0, 0, 1)
 
@@ -61,13 +72,17 @@ func TestReadDescription(t *testing.T) {
 }
 
 func TestReadDataState(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress)
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	_, err = conn.ReadDataState(context.Background(), 0, 0, 1)
 
@@ -77,14 +92,22 @@ func TestReadDataState(t *testing.T) {
 func BenchmarkReadParallel(t *testing.B) {
 	log.SetFlags(log.Lmicroseconds)
 
-	conn, err := sip.Dial("tcp", serverAddress)
-	defer func() { _ = conn.Close() }()
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress)
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	d1 := make(chan []byte)
 	go func() {
@@ -106,22 +129,22 @@ func BenchmarkReadParallel(t *testing.B) {
 	assert.Equal(t, b1, b2)
 }
 
-func init() {
-	_ = errtrace.FormatString(errors.ErrUnsupported)
-}
-
 func TestReadS192(t *testing.T) {
-	conn, err := sip.Dial("tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
+	conn, err := sip.Dial(context.Background(), "tcp", serverAddress, sip.WithConcurrentTransactionLimit(1))
 
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	defer measureTime("")()
 
-	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 1789)
+	resp, err := conn.ReadOnlyData(context.Background(), 0, 0, 192)
 
 	assert.NoError(t, err)
 	assert.NotEqual(t, 0, resp.DataLength)

@@ -9,5 +9,5 @@ func (i Idn) String() string {
 	if i&0x8000 == 0x8000 {
 		idnType = "P"
 	}
-	return fmt.Sprintf("%s-%1d-%04d.%d.%d", idnType, (uint8)(i>>12)&0x7, (uint16)(i&0x0fff), (uint8)(i>>24), (uint8)(i>>16))
+	return fmt.Sprintf("%s-%1d-%04d.%d.%d", idnType, (uint8)((i>>12)&0x7), (uint16)(i&0x0fff), (uint8)((i>>24)&0xff), (uint8)((i>>16)&0xff)) // nolint:gosec
 }

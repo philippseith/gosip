@@ -2,23 +2,38 @@ package sip
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
-	"braces.dev/errtrace"
+	"github.com/joomcode/errorx"
 )
 
 type ReadEverythingRequest Request
 
 func (r *ReadEverythingRequest) Read(reader io.Reader) error {
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r))
+	if err := binary.Read(reader, binary.LittleEndian, r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingRequest) Write(writer io.Writer) error {
-	return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, *r))
+	if err := binary.Write(writer, binary.LittleEndian, *r); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingRequest) MessageType() MessageType {
 	return ReadEverythingRequestMsgType
+}
+
+func (r *ReadEverythingRequest) Target() Request {
+	return Request{
+		r.SlaveIndex,
+		r.SlaveExtension,
+		r.IDN,
+	}
 }
 
 type ReadEverythingResponse struct {
@@ -43,41 +58,57 @@ type readEverythingResponse struct {
 func (r *ReadEverythingResponse) Read(reader io.Reader) error {
 	err := binary.Read(reader, binary.LittleEndian, &r.readEverythingResponse)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
+	}
+	if uint32(r.NameLength) > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: NameLength %d exceeds maximum %d", Error, r.NameLength, maxPDUFieldLength))
 	}
 	r.Name = make([]byte, r.NameLength)
 	err = binary.Read(reader, binary.LittleEndian, r.Name)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
+	}
+	if uint32(r.UnitLength) > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: UnitLength %d exceeds maximum %d", Error, r.UnitLength, maxPDUFieldLength))
 	}
 	r.Unit = make([]byte, r.UnitLength)
 	err = binary.Read(reader, binary.LittleEndian, r.Unit)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
+	}
+	if r.DataLength > maxPDUFieldLength {
+		return errorx.EnsureStackTrace(fmt.Errorf("%w: DataLength %d exceeds maximum %d", Error, r.DataLength, maxPDUFieldLength))
 	}
 	r.Data = make([]byte, r.DataLength)
-	return errtrace.Wrap(binary.Read(reader, binary.LittleEndian, r.Data))
+	err = binary.Read(reader, binary.LittleEndian, r.Data)
+	if err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
+	return nil
 }
 
 func (r *ReadEverythingResponse) Write(writer io.Writer) error {
 	err := binary.Write(writer, binary.LittleEndian, r.readEverythingResponse)
 	if err != nil {
-		return errtrace.Wrap(err)
+		return errorx.EnsureStackTrace(err)
 	}
 	if r.NameLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, r.Name)
 		if err != nil {
-			return errtrace.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.UnitLength > 0 {
 		err = binary.Write(writer, binary.LittleEndian, r.Unit)
 		if err != nil {
-			return errtrace.Wrap(err)
+			return errorx.EnsureStackTrace(err)
 		}
 	}
 	if r.DataLength > 0 {
-		return errtrace.Wrap(binary.Write(writer, binary.LittleEndian, r.Data))
+		err = binary.Write(writer, binary.LittleEndian, r.Data)
+		if err != nil {
+			return errorx.EnsureStackTrace(err)
+		}
 	}
 	return nil
 }
@@ -88,8 +119,8 @@ func (r *ReadEverythingResponse) MessageType() MessageType {
 
 func newReadEverythingPDUs(slaveIndex, slaveExtension int, idn uint32) (*ReadEverythingRequest, *ReadEverythingResponse) {
 	return &ReadEverythingRequest{
-		SlaveIndex:     uint16(slaveIndex),
-		SlaveExtension: uint16(slaveExtension),
+		SlaveIndex:     uint16(slaveIndex),     // nolint:gosec
+		SlaveExtension: uint16(slaveExtension), // nolint:gosec
 		IDN:            idn,
 	}, &ReadEverythingResponse{}
 }
