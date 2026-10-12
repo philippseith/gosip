@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -328,7 +329,7 @@ func doBrowse(args []string) error {
 	var listen time.Duration
 
 	fs := newFlagSet("browse")
-	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
+	fs.StringVarP(&interfaceName, "interface", "i", "", interfaceFlagUsage())
 	fs.DurationVarP(&listen, "listen", "l", 3*time.Second, "[optional] how long to listen for responses")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -388,7 +389,7 @@ func doIdentify(args []string) error {
 	var listen time.Duration
 
 	fs := newFlagSet("identify")
-	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
+	fs.StringVarP(&interfaceName, "interface", "i", "", interfaceFlagUsage())
 	fs.StringVarP(&nodeStr, "node", "n", "", "[mandatory] node identifier of the device, e.g. 00:11:22:33:44:55")
 	fs.DurationVarP(&listen, "listen", "l", 3*time.Second, "[optional] how long to listen for responses")
 	if err := fs.Parse(args); err != nil {
@@ -419,7 +420,7 @@ func doSetIP(args []string) error {
 	var listen time.Duration
 
 	fs := newFlagSet("setip")
-	fs.StringVarP(&interfaceName, "interface", "i", "", "[mandatory] name of the network interface to broadcast on, e.g. en0")
+	fs.StringVarP(&interfaceName, "interface", "i", "", interfaceFlagUsage())
 	fs.StringVarP(&nodeStr, "node", "n", "", "[mandatory] node identifier of the device, e.g. 00:11:22:33:44:55")
 	fs.StringVarP(&ipStr, "ip", "p", "", "[mandatory] IPv4 address to set, e.g. 192.168.1.100")
 	fs.StringVarP(&gatewayStr, "gateway", "g", "0.0.0.0", "[optional] IPv4 gateway address")
@@ -490,6 +491,42 @@ func parseIPv4(s string) (net.IP, error) {
 
 func formatMAC(b [6]byte) string {
 	return net.HardwareAddr(b[:]).String()
+}
+
+func interfaceFlagUsage() string {
+	const description = "[mandatory] name of the network interface to broadcast on"
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return description + "; available interfaces: unavailable"
+	}
+
+	names := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addresses, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, address := range addresses {
+			ip := net.ParseIP(address.String())
+			if ip == nil {
+				ip, _, _ = net.ParseCIDR(address.String())
+			}
+			if ip != nil && ip.To4() != nil {
+				names = append(names, iface.Name)
+				break
+			}
+		}
+	}
+
+	if len(names) == 0 {
+		return description + "; available interfaces: none"
+	}
+	sort.Strings(names)
+	return description + "; available interfaces: " + strings.Join(names, ", ")
 }
 
 // parseIdn accepts a decimal or hexadecimal number or the Sercos notation
