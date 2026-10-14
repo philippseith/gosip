@@ -1,0 +1,284 @@
+{
+  "cmd/gosip/main.go": {
+    "mtime": 1791999842.067169,
+    "seen": 1792001995.8281431,
+    "ast_hash": "bcd10a27506647ad5c5152ded8611433",
+    "semantic_hash": "bcd10a27506647ad5c5152ded8611433"
+  },
+  "cmd/gosip/main_test.go": {
+    "mtime": 1791999842.067304,
+    "seen": 1792001995.8281448,
+    "ast_hash": "271bd3644847751bbe543943b99a4ae8",
+    "semantic_hash": "271bd3644847751bbe543943b99a4ae8"
+  },
+  "go.mod": {
+    "mtime": 1791999842.0674908,
+    "seen": 1792001995.828146,
+    "ast_hash": "622b9d36f1114d868b2b11e2d1ed2559",
+    "semantic_hash": "622b9d36f1114d868b2b11e2d1ed2559"
+  },
+  "sip/broadcast.go": {
+    "mtime": 1791999842.068184,
+    "seen": 1792001995.828146,
+    "ast_hash": "6bfab8e096419193ab62bcdca23cbd5a",
+    "semantic_hash": "6bfab8e096419193ab62bcdca23cbd5a"
+  },
+  "sip/browse.go": {
+    "mtime": 1790188224.1104977,
+    "seen": 1792001995.828147,
+    "ast_hash": "8c515ac51aaf4b94da0ba3eee188b086",
+    "semantic_hash": "8c515ac51aaf4b94da0ba3eee188b086"
+  },
+  "sip/browse_test.go": {
+    "mtime": 1715413526.861329,
+    "seen": 1792001995.828147,
+    "ast_hash": "b7cec555854e21da2759896579a3b1dd",
+    "semantic_hash": "b7cec555854e21da2759896579a3b1dd"
+  },
+  "sip/client.go": {
+    "mtime": 1791999842.068585,
+    "seen": 1792001995.828148,
+    "ast_hash": "dac2cbb6006ca905d153517da74c9fca",
+    "semantic_hash": "dac2cbb6006ca905d153517da74c9fca"
+  },
+  "sip/client_test.go": {
+    "mtime": 1775910133.153426,
+    "seen": 1792001995.82815,
+    "ast_hash": "5e75ba244a5d33c052766a9ae351e1d6",
+    "semantic_hash": "5e75ba244a5d33c052766a9ae351e1d6"
+  },
+  "sip/conn.go": {
+    "mtime": 1791999842.069024,
+    "seen": 1792001995.82815,
+    "ast_hash": "5050392c287b407d3869c71e9a3de36e",
+    "semantic_hash": "5050392c287b407d3869c71e9a3de36e"
+  },
+  "sip/conn_connect_close.go": {
+    "mtime": 1790188224.1112962,
+    "seen": 1792001995.828151,
+    "ast_hash": "233c42223aa38f36287ffc2891a8f0e6",
+    "semantic_hash": "233c42223aa38f36287ffc2891a8f0e6"
+  },
+  "sip/conn_options.go": {
+    "mtime": 1790188224.111554,
+    "seen": 1792001995.828151,
+    "ast_hash": "5307a74b2f6f402ee1794a9f374de21b",
+    "semantic_hash": "5307a74b2f6f402ee1794a9f374de21b"
+  },
+  "sip/conn_send_recv.go": {
+    "mtime": 1790188224.1119297,
+    "seen": 1792001995.8281522,
+    "ast_hash": "0d3da383cd076f7033e9132a5eeb3fdd",
+    "semantic_hash": "0d3da383cd076f7033e9132a5eeb3fdd"
+  },
+  "sip/conn_type.go": {
+    "mtime": 1790188224.1122205,
+    "seen": 1792001995.8281531,
+    "ast_hash": "44cb3723c6287de83711fba80157aeae",
+    "semantic_hash": "44cb3723c6287de83711fba80157aeae"
+  },
+  "sip/connect.go": {
+    "mtime": 1775902264.1139624,
+    "seen": 1792001995.8281531,
+    "ast_hash": "4a3bd40e7cad5e241f4c4e02b1381e45",
+    "semantic_hash": "4a3bd40e7cad5e241f4c4e02b1381e45"
+  },
+  "sip/connect_ping_test.go": {
+    "mtime": 1791999842.0696287,
+    "seen": 1792001995.828154,
+    "ast_hash": "1957fd58e75f4b6d1ff6efb86914c4e1",
+    "semantic_hash": "1957fd58e75f4b6d1ff6efb86914c4e1"
+  },
+  "sip/dev_test.go": {
+    "mtime": 1791999842.0699117,
+    "seen": 1792001995.828154,
+    "ast_hash": "50886e1e7dff51b248f6217403a89b21",
+    "semantic_hash": "50886e1e7dff51b248f6217403a89b21"
+  },
+  "sip/exception.go": {
+    "mtime": 1790188224.1126442,
+    "seen": 1792001995.8281548,
+    "ast_hash": "c94a5c16b78c3844c60a85422bef50eb",
+    "semantic_hash": "c94a5c16b78c3844c60a85422bef50eb"
+  },
+  "sip/exception_test.go": {
+    "mtime": 1715413526.8158522,
+    "seen": 1792001995.8281548,
+    "ast_hash": "e03c57bd41f44d585d9ddbb2afc949a8",
+    "semantic_hash": "e03c57bd41f44d585d9ddbb2afc949a8"
+  },
+  "sip/header.go": {
+    "mtime": 1742635443.4227128,
+    "seen": 1792001995.828156,
+    "ast_hash": "337926a1fb270c891c513385d471694d",
+    "semantic_hash": "337926a1fb270c891c513385d471694d"
+  },
+  "sip/identify.go": {
+    "mtime": 1790188224.1128526,
+    "seen": 1792001995.828156,
+    "ast_hash": "3c8d2b2cbb80c2a90295fad3f6c6500f",
+    "semantic_hash": "3c8d2b2cbb80c2a90295fad3f6c6500f"
+  },
+  "sip/identify_test.go": {
+    "mtime": 1766501489.0938325,
+    "seen": 1792001995.828157,
+    "ast_hash": "22b1946d1ec7ecf8056be7b418e016c7",
+    "semantic_hash": "22b1946d1ec7ecf8056be7b418e016c7"
+  },
+  "sip/idn.go": {
+    "mtime": 1742635443.422963,
+    "seen": 1792001995.828157,
+    "ast_hash": "4bddcde8f202143898263cc16b4cbdd6",
+    "semantic_hash": "4bddcde8f202143898263cc16b4cbdd6"
+  },
+  "sip/keepalive_test.go": {
+    "mtime": 1791999842.070106,
+    "seen": 1792001995.828158,
+    "ast_hash": "dcad289687194f3eb877cde2dad7ef6e",
+    "semantic_hash": "dcad289687194f3eb877cde2dad7ef6e"
+  },
+  "sip/logging_syncclient.go": {
+    "mtime": 1775922420.6791103,
+    "seen": 1792001995.828159,
+    "ast_hash": "24ae280310cff1423b556c5afa362548",
+    "semantic_hash": "24ae280310cff1423b556c5afa362548"
+  },
+  "sip/main_test.go": {
+    "mtime": 1790188224.1132536,
+    "seen": 1792001995.828159,
+    "ast_hash": "60214e0e009f4d72b779c758533d897a",
+    "semantic_hash": "60214e0e009f4d72b779c758533d897a"
+  },
+  "sip/message_types.go": {
+    "mtime": 1703237463.353826,
+    "seen": 1792001995.82816,
+    "ast_hash": "c604954d575c3d71f4328eee1d32c796",
+    "semantic_hash": "c604954d575c3d71f4328eee1d32c796"
+  },
+  "sip/mux.go": {
+    "mtime": 1777199809.627618,
+    "seen": 1792001995.82816,
+    "ast_hash": "586a02ea55f84e1866f10a3d57a701a6",
+    "semantic_hash": "586a02ea55f84e1866f10a3d57a701a6"
+  },
+  "sip/ping.go": {
+    "mtime": 1703237463.3540292,
+    "seen": 1792001995.828161,
+    "ast_hash": "6f68746157ac95ced206cdf257471988",
+    "semantic_hash": "6f68746157ac95ced206cdf257471988"
+  },
+  "sip/read_test.go": {
+    "mtime": 1791999842.0704541,
+    "seen": 1792001995.828161,
+    "ast_hash": "545da6b093b88b0d85d8900d39aa6027",
+    "semantic_hash": "545da6b093b88b0d85d8900d39aa6027"
+  },
+  "sip/readdatastate.go": {
+    "mtime": 1743931685.1852572,
+    "seen": 1792001995.828162,
+    "ast_hash": "03a4c96aba688fa46febe3e336329a08",
+    "semantic_hash": "03a4c96aba688fa46febe3e336329a08"
+  },
+  "sip/readdescription.go": {
+    "mtime": 1777199607.1404836,
+    "seen": 1792001995.828162,
+    "ast_hash": "f8955f58048f53b139747fed9f966958",
+    "semantic_hash": "f8955f58048f53b139747fed9f966958"
+  },
+  "sip/readeverything.go": {
+    "mtime": 1777199607.1410935,
+    "seen": 1792001995.8281631,
+    "ast_hash": "c5775e4b34b2518bed32a0f447714eac",
+    "semantic_hash": "c5775e4b34b2518bed32a0f447714eac"
+  },
+  "sip/readonlydata.go": {
+    "mtime": 1777199607.1414902,
+    "seen": 1792001995.8281631,
+    "ast_hash": "0946320dcbf32037caf17e02f26b1d2a",
+    "semantic_hash": "0946320dcbf32037caf17e02f26b1d2a"
+  },
+  "sip/requestoption.go": {
+    "mtime": 1790188224.1134243,
+    "seen": 1792001995.828164,
+    "ast_hash": "2bf2acdfa0d6f51b1a6e9037765bb338",
+    "semantic_hash": "2bf2acdfa0d6f51b1a6e9037765bb338"
+  },
+  "sip/result.go": {
+    "mtime": 1713606232.6717124,
+    "seen": 1792001995.828164,
+    "ast_hash": "783be0b7942fa41d05a69cd60ee0dc90",
+    "semantic_hash": "783be0b7942fa41d05a69cd60ee0dc90"
+  },
+  "sip/server.go": {
+    "mtime": 1790188224.113655,
+    "seen": 1792001995.828165,
+    "ast_hash": "2dbd48ff2af213ecfa86dd324c9ab2c7",
+    "semantic_hash": "2dbd48ff2af213ecfa86dd324c9ab2c7"
+  },
+  "sip/setip.go": {
+    "mtime": 1790188224.1138124,
+    "seen": 1792001995.8281658,
+    "ast_hash": "285413cb0d365a8dcfd5d5aa1222ee89",
+    "semantic_hash": "285413cb0d365a8dcfd5d5aa1222ee89"
+  },
+  "sip/setip_test.go": {
+    "mtime": 1790188224.1139603,
+    "seen": 1792001995.8281658,
+    "ast_hash": "4c6302c2e0b5b98ec2785e5f98f7ac13",
+    "semantic_hash": "4c6302c2e0b5b98ec2785e5f98f7ac13"
+  },
+  "sip/sip.go": {
+    "mtime": 1790188224.1144285,
+    "seen": 1792001995.828167,
+    "ast_hash": "862cc09e3324fb95bcda220b7bfd256b",
+    "semantic_hash": "862cc09e3324fb95bcda220b7bfd256b"
+  },
+  "sip/timeoutreader.go": {
+    "mtime": 1742635443.4273062,
+    "seen": 1792001995.828167,
+    "ast_hash": "013a8a63a5f7ac403bcdd3ec6433a753",
+    "semantic_hash": "013a8a63a5f7ac403bcdd3ec6433a753"
+  },
+  "sip/udp.go": {
+    "mtime": 1790188224.1146257,
+    "seen": 1792001995.828168,
+    "ast_hash": "24216300c5cebb938a1a04b9ff85a5c3",
+    "semantic_hash": "24216300c5cebb938a1a04b9ff85a5c3"
+  },
+  "sip/util.go": {
+    "mtime": 1742635443.4280019,
+    "seen": 1792001995.828168,
+    "ast_hash": "2455e2b589c0afabc4cc0134eb5a0c67",
+    "semantic_hash": "2455e2b589c0afabc4cc0134eb5a0c67"
+  },
+  "sip/write.go": {
+    "mtime": 1777199607.141779,
+    "seen": 1792001995.8281689,
+    "ast_hash": "a3f03fc258f9f9d390d0a292a91a846c",
+    "semantic_hash": "a3f03fc258f9f9d390d0a292a91a846c"
+  },
+  "sip_test/listener.go": {
+    "mtime": 1711810426.3091898,
+    "seen": 1792001995.82817,
+    "ast_hash": "e77e99de11169c6fc7bec4874a769f6e",
+    "semantic_hash": "e77e99de11169c6fc7bec4874a769f6e"
+  },
+  "sip_test/mux_test.go": {
+    "mtime": 1775910137.856659,
+    "seen": 1792001995.82817,
+    "ast_hash": "db160ad06be6749f0bb99b01b6c92a19",
+    "semantic_hash": "db160ad06be6749f0bb99b01b6c92a19"
+  },
+  "sip_test/server_test.go": {
+    "mtime": 1791999842.0706873,
+    "seen": 1792001995.828171,
+    "ast_hash": "6743e42b35083b69d6753da080ae536e",
+    "semantic_hash": "6743e42b35083b69d6753da080ae536e"
+  },
+  "sip_test/simplesynclient.go": {
+    "mtime": 1790188224.1148791,
+    "seen": 1792001995.828172,
+    "ast_hash": "8136653ce1087d3e5900b32f6d623ffe",
+    "semantic_hash": "8136653ce1087d3e5900b32f6d623ffe"
+  }
+}
