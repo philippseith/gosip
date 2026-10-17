@@ -5,7 +5,7 @@
 - Scanner: OMP Native Security
 - Scan ID: `secscan_01a13b8e6b6b7152aabc8e7e3a7c6f0b`
 - Target: full repository (`gosip`)
-- Result: **7 findings** — 1 resolved, 6 open
+- Result: **7 findings** — 2 resolved, 5 open
 - Coverage: **partial**
 - Disposition: scan findings have not been independently exploit-validated.
 
@@ -31,6 +31,7 @@ A separate `govulncheck ./...` attempt did not produce a vulnerability result: t
 - **Rule / ID:** `gosip.conn-dead-transport-reused-after-protocol-error` / `secf_8c230659dc09a9ef68ff93f3`
 - **Locations:** `sip/conn_send_recv.go:63-67`, `sip/conn_send_recv.go:210-212`; supporting: `sip/conn.go:185-187,215-222`, `sip/client.go:319-321`, `sip/conn_send_recv.go:101-108`
 - **Evidence:** An invalid response message type (including type 0) ends the receive loop and cancels its context. The watcher marks the connection closed/cancels requests but does not run `cleanUp`; `Connected` does not check the closed state. The transport and non-nil request queue can therefore remain. A later enqueue can synchronously block because the send loop has exited.
+- **Status:** Fixed. Receive-loop failure now closes the transport and clears request state; health checks and request enqueue reject the dead connection.
 - **Conditions / impact:** A peer that can send a malformed response while a request is pending may make subsequent client operations hang until explicit close or recovery.
 - **Suggested fix:** Tear down and clear transport/queue state on receive-loop failure; include closed state in health checks; make enqueue context-aware so a dead send loop cannot block callers indefinitely.
 

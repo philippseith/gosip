@@ -91,29 +91,41 @@ func (c *conn) dequeueRequest() <-chan request {
 }
 
 // enqueueRequest puts a request into the request queue.
-func (c *conn) enqueueRequest(req request) error {
-	ch := func() chan<- request {
-		c.mxState.RLock()
-		defer c.mxState.RUnlock()
-
-		return c.reqCh
-	}()
-	// Is the connection closed?
-	if ch == nil {
+func (c *conn) enqueueRequest(ctx context.Context, req request) error {
+	c.mxState.RLock()
+	ch := c.reqCh
+	closedCh := c.closedCh
+	closed := c.closed
+	c.mxState.RUnlock()
+	if ch == nil || closed {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	// Send request job into the queue of the sendLoop
+
 	atomic.AddInt32(&c.reqChWaitCount, 1)
-	ch <- req
-	atomic.AddInt32(&c.reqChWaitCount, -1)
-	return nil
+	defer atomic.AddInt32(&c.reqChWaitCount, -1)
+
+	select {
+	case ch <- req:
+		return nil
+	case <-ctx.Done():
+		return errorx.EnsureStackTrace(ctx.Err())
+	case <-closedCh:
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
 }
 
 // send writes the contents of the request to the net.Conn.
 func (c *conn) send(req request) error {
 	// The write function of the request is build in sendAndWaitForResponse,
 	// where also the transactionID is set.
-	transactionID, err := req.write(c.Conn)
+	c.mxState.RLock()
+	conn := c.Conn
+	closed := c.closed
+	c.mxState.RUnlock()
+	if conn == nil || closed {
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
+	transactionID, err := req.write(conn)
 	if err != nil {
 		return err
 	}
@@ -164,10 +176,24 @@ func (c *conn) receiveAndDispatch() error {
 	if ch == nil {
 		return errorx.EnsureStackTrace(fmt.Errorf("%w: received response for unknown transaction ID %d", Error, h.TransactionID))
 	}
-	ch <- respFunc
-	// Important: Wait for the current respFunc to read the rest of the message (the PDU) from the net.Conn
-	<-respFuncExecuted
-	return nil
+	c.mxState.RLock()
+	closedCh := c.closedCh
+	closed := c.closed
+	c.mxState.RUnlock()
+	if closed || closedCh == nil {
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
+	select {
+	case ch <- respFunc:
+	case <-closedCh:
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
+	select {
+	case <-respFuncExecuted:
+		return nil
+	case <-closedCh:
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
 }
 
 // readNextResponse loops until a non-Busy response header is received, then
@@ -330,20 +356,20 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 	// wait for the function by which we can read the response
 	// (it comes from the receiveLoop calling receiveAndDispatch which reads the header)
 	// The receiveLoop blocks read access to the net.Conn until the respFunc is executed
+	c.mxState.RLock()
+	closedCh := c.closedCh
+	c.mxState.RUnlock()
 	respCh := c.sendRequest(ctx, req)
 	select {
 	case respFunc := <-respCh:
 		// Fill it by using PDU.Read()
 		return respFunc(resp)
 	case <-ctx.Done():
-		// Capture closedCh before spawning the goroutine. cleanUp nils c.closedCh
-		// after closing it; selecting on a nil channel blocks forever, but selecting
-		// on a closed channel returns immediately — we need the latter.
-		closedCh := c.closedCh
+		// Drain the original response so receiveLoop can finish, or stop when
+		// connection teardown closes the channel captured before the request.
 		go func() {
-			// The respFunc has to be executed in any case. Otherwise, the receiveLoop will block.
-			// Guard with closedCh so we don't leak if the connection closes before the send
-			// loop picks up the request.
+			// The callback must run so receiveLoop can consume the PDU body.
+			// Stop waiting if the connection closes before response dispatch.
 			select {
 			case respFunc := <-respCh:
 				_ = respFunc(resp)
@@ -351,6 +377,8 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 			}
 		}()
 		return errorx.EnsureStackTrace(ctx.Err())
+	case <-closedCh:
+		return errorx.EnsureStackTrace(ErrorClosed)
 	}
 }
 
@@ -379,7 +407,7 @@ func (c *conn) sendRequest(ctx context.Context, pdu PDU) <-chan func(PDU) error 
 		deadline: deadline,
 	}
 	// Push the request to the sendloop
-	if err := c.enqueueRequest(req); err != nil {
+	if err := c.enqueueRequest(ctx, req); err != nil {
 		// The sendLoop does not run anymore
 		// Build an result chan which errors
 		ch := make(chan func(PDU) error, 1)

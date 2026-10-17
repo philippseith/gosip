@@ -3,6 +3,7 @@ package sip_test
 import (
 	"context"
 	"io"
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -59,6 +60,52 @@ func TestCanceledWriteDataDoesNotReplay(t *testing.T) {
 	defer cancelPing()
 	require.NoError(t, client.Ping(pingCtx), "response dispatch must continue after cancellation")
 	require.EqualValues(t, 1, source.writes.Load(), "canceled WriteData must not be replayed")
+}
+
+func TestMalformedResponseTearsDownConnection(t *testing.T) {
+	listener := NewListener()
+	serveCtx, cancelServe := context.WithCancel(context.Background())
+	defer cancelServe()
+	require.NoError(t, sip.Serve(serveCtx, listener, SimpleSyncClient{}))
+
+	client, err := sip.Dial(context.Background(), "", "", sip.WithDial(func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+		conn, err := listener.Dial(network, address)
+		if err != nil {
+			return nil, err
+		}
+		return &malformedResponseConn{Conn: conn}, nil
+	}))
+	require.NoError(t, err)
+	defer client.Close()
+	require.True(t, client.Connected())
+
+	pingCtx, cancelPing := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelPing()
+	require.Error(t, client.Ping(pingCtx))
+	require.Eventually(t, client.Closed, time.Second, time.Millisecond)
+	require.False(t, client.Connected())
+
+	reuseCtx, cancelReuse := context.WithTimeout(context.Background(), time.Second)
+	defer cancelReuse()
+	require.ErrorIs(t, client.Ping(reuseCtx), sip.ErrorClosed)
+}
+
+type malformedResponseConn struct {
+	net.Conn
+	readOffset int
+}
+
+func (c *malformedResponseConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	const pingResponseTypeOffset = 8 + 16 + 6*4 + 4
+	for i := range n {
+		position := c.readOffset + i
+		if position >= pingResponseTypeOffset && position < pingResponseTypeOffset+4 {
+			p[i] = 0
+		}
+	}
+	c.readOffset += n
+	return n, err
 }
 
 type blockingWriteSource struct {
