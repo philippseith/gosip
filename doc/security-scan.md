@@ -5,7 +5,7 @@
 - Scanner: OMP Native Security
 - Scan ID: `secscan_01a13b8e6b6b7152aabc8e7e3a7c6f0b`
 - Target: full repository (`gosip`)
-- Result: **7 findings** — 3 resolved, 4 open
+- Result: **7 findings** — 4 resolved, 3 open
 - Coverage: **partial**
 - Disposition: scan findings have not been independently exploit-validated.
 
@@ -69,6 +69,7 @@ A separate `govulncheck ./...` attempt did not produce a vulnerability result: t
 - **Rule / ID:** `gosip.broadcast-malformed-packet-memory-amplification` / `secf_a535aeeabf5d67f5814641aa`
 - **Locations:** `sip/udp.go:22-48`; supporting: `sip/broadcast.go:34-44,107-126`
 - **Evidence:** `listenUDP` accepts a maximum-size IPv4 UDP datagram and discards its sender address. If the message type matches but the body is malformed, it formats the full packet (`buf[:n]`) into an error sent to a buffered result channel. The scan estimates a burst could retain on the order of 100 MB. A blocked channel send also prevents the worker from noticing cancellation until results are drained.
+- **Status:** Fixed. Parse errors now report only packet type and length; result delivery is cancellation-aware and the shared result buffer is capped at 64.
 - **Conditions / impact:** A same-LAN peer that can observe the broadcast's ephemeral source port can send malformed expected-type replies during a broadcast, causing memory pressure and retaining a worker/socket.
 - **Suggested fix:** Do not include full packet bytes in errors; report bounded metadata such as type and length. Bound retained result memory and make delivery cancellation-aware.
 
