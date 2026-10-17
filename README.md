@@ -74,3 +74,51 @@ on all variable-length PDU fields:
 | NoMessageTypes | Connect |
 
 Responses advertising larger values are rejected with an error.
+
+## Restricted SSH forwarding
+
+The `ext` package provides an SSH server for local TCP forwarding. It requires a host signer, at least one password or authorized-key credential, and an explicit allowlist of forwarding targets. Only SSH `direct-tcpip` channels are enabled; shell, exec, subsystem, remote-forwarding, and non-allowlisted target requests are rejected.
+
+```go
+package main
+
+import (
+	"net"
+	"os"
+
+	"github.com/philippseith/gosip/ext"
+	cryptossh "golang.org/x/crypto/ssh"
+)
+
+func serveSSH() error {
+	hostKeyPEM, err := os.ReadFile("ssh_host_ed25519")
+	if err != nil {
+		return err
+	}
+	hostSigner, err := cryptossh.ParsePrivateKey(hostKeyPEM)
+	if err != nil {
+		return err
+	}
+	authorizedKey, err := os.ReadFile("operator.pub")
+	if err != nil {
+		return err
+	}
+	server, err := ext.NewSSHServer(
+		ext.WithHostSigner(hostSigner),
+		ext.WithAuthorizedKey("operator", authorizedKey),
+		ext.WithForwardingTargets("192.168.1.50:35021"),
+	)
+	if err != nil {
+		return err
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:2222")
+	if err != nil {
+		return err
+	}
+	return server.Serve(listener)
+}
+```
+
+`WithPasswordCredential(username, password)` can be used instead of an authorized key. An SSH client can then forward the configured target with `ssh -p 2222 -N -L 35021:192.168.1.50:35021 operator@127.0.0.1`.
+
+
