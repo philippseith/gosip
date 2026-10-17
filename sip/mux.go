@@ -3,6 +3,7 @@ package sip
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/joomcode/errorx"
 )
@@ -26,6 +27,33 @@ type mux struct {
 	source SyncClient
 	jobs   map[muxJob][]chan Result[any]
 	mx     sync.Mutex
+}
+
+type timeoutProvider interface {
+	BusyTimeout() time.Duration
+	LeaseTimeout() time.Duration
+}
+
+func (m *mux) negotiatedTimeouts() (busy, lease time.Duration, available bool, err error) {
+	provider, ok := m.source.(timeoutProvider)
+	if !ok {
+		return 0, 0, false, nil
+	}
+
+	busy, lease = provider.BusyTimeout(), provider.LeaseTimeout()
+	if busy > 0 && lease > 0 {
+		return busy, lease, true, nil
+	}
+
+	if err := m.source.Ping(); err != nil {
+		return 0, 0, false, err
+	}
+
+	busy, lease = provider.BusyTimeout(), provider.LeaseTimeout()
+	if busy <= 0 || lease <= 0 {
+		return busy, lease, false, nil
+	}
+	return busy, lease, true, nil
 }
 
 type muxJob struct {

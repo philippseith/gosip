@@ -1,6 +1,9 @@
 package sip
 
-import "log"
+import (
+	"log"
+	"time"
+)
 
 // LoggingSyncClient is a wrapper around SyncClient that logs all method calls
 // and forwards them to the inner SyncClient.
@@ -17,6 +20,22 @@ type LoggingSyncClient struct {
 //	// All method calls will be logged.
 func NewLoggingSyncClient(inner SyncClient) *LoggingSyncClient {
 	return &LoggingSyncClient{inner: inner}
+}
+
+// BusyTimeout returns the inner client's negotiated busy timeout when available.
+func (l *LoggingSyncClient) BusyTimeout() time.Duration {
+	if provider, ok := l.inner.(timeoutProvider); ok {
+		return provider.BusyTimeout()
+	}
+	return 0
+}
+
+// LeaseTimeout returns the inner client's negotiated lease timeout when available.
+func (l *LoggingSyncClient) LeaseTimeout() time.Duration {
+	if provider, ok := l.inner.(timeoutProvider); ok {
+		return provider.LeaseTimeout()
+	}
+	return 0
 }
 
 // Ping logs the call and forwards it to the inner SyncClient.
