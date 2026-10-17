@@ -12,6 +12,8 @@ import (
 // ConnOption is option for Conn
 type ConnOption func(c *connOptions) error
 
+const defaultMaxConnections = 64
+
 type connOptions struct {
 	dial                         func(context.Context, string, string) (io.ReadWriteCloser, error)
 	dialCtx                      context.Context
@@ -58,7 +60,8 @@ func WithLeaseTimeout(timeout int) ConnOption {
 // WithMaxConnections limits the number of concurrently active server connections
 // accepted by Serve. When the limit is reached the accept loop blocks until an
 // existing connection closes, providing back-pressure at the TCP level.
-// If not set, there is no limit. Must be greater than 0.
+// Serve defaults to 64 active connections if this option is not set.
+// Must be greater than 0.
 func WithMaxConnections(n int) ConnOption {
 	return func(c *connOptions) error {
 		if n <= 0 {

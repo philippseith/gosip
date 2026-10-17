@@ -5,7 +5,7 @@
 - Scanner: OMP Native Security
 - Scan ID: `secscan_01a13b8e6b6b7152aabc8e7e3a7c6f0b`
 - Target: full repository (`gosip`)
-- Result: **7 findings** — 2 resolved, 5 open
+- Result: **7 findings** — 3 resolved, 4 open
 - Coverage: **partial**
 - Disposition: scan findings have not been independently exploit-validated.
 
@@ -50,6 +50,7 @@ A separate `govulncheck ./...` attempt did not produce a vulnerability result: t
 - **Rule / ID:** `gosip.server-unbounded-connection-workers` / `secf_77b485364c41d9034ec39420`
 - **Locations:** `sip/server.go:20-27,45-64,98-101`; supporting: `sip/conn_options.go:58-68`
 - **Evidence:** `Serve` leaves `maxConnectionsCh` nil unless `WithMaxConnections` is supplied. The accept loop starts a goroutine for each accepted connection and skips the connection gate when the channel is nil. The 2-second read deadline bounds an idle worker's lifetime, but does not cap concurrent accepts.
+- **Status:** Fixed. `Serve` now limits active connections to 64 by default; `WithMaxConnections` overrides the default.
 - **Conditions / impact:** A reachable listener can be flooded with connections, consuming file descriptors, goroutines, and memory.
 - **Suggested mitigation:** Apply a safe default cap or require a cap for network-facing use. Confirm the accept/back-pressure path remains bounded during overload.
 

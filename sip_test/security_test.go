@@ -90,6 +90,62 @@ func TestMalformedResponseTearsDownConnection(t *testing.T) {
 	require.ErrorIs(t, client.Ping(reuseCtx), sip.ErrorClosed)
 }
 
+func TestServeLimitsConnectionsByDefault(t *testing.T) {
+	const defaultLimit = 64
+	type dialResult struct {
+		conn sip.Conn
+		err  error
+	}
+
+	listener := NewListener()
+	serveCtx, cancelServe := context.WithCancel(context.Background())
+	defer cancelServe()
+	require.NoError(t, sip.Serve(serveCtx, listener, SimpleSyncClient{}, sip.WithBusyTimeout(10000)))
+
+	dial := func() (sip.Conn, error) {
+		return sip.Dial(context.Background(), "", "", sip.WithDial(func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+			return listener.Dial(network, address)
+		}))
+	}
+	clients := make([]sip.Conn, 0, defaultLimit+1)
+	defer func() {
+		for _, client := range clients {
+			_ = client.Close()
+		}
+	}()
+	for range defaultLimit {
+		client, err := dial()
+		require.NoError(t, err)
+		clients = append(clients, client)
+	}
+
+	connected := make(chan dialResult, 1)
+	go func() {
+		client, err := dial()
+		connected <- dialResult{conn: client, err: err}
+	}()
+	select {
+	case result := <-connected:
+		if result.conn != nil {
+			clients = append(clients, result.conn)
+		}
+		require.NoError(t, result.err)
+		t.Fatal("Serve accepted more than the default connection limit")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	require.NoError(t, clients[0].Close())
+	clients = clients[1:]
+	select {
+	case result := <-connected:
+		require.NoError(t, result.err)
+		require.NotNil(t, result.conn)
+		clients = append(clients, result.conn)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not admit a connection after capacity became available")
+	}
+}
+
 type malformedResponseConn struct {
 	net.Conn
 	readOffset int

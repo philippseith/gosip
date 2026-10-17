@@ -22,6 +22,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
+			maxConnectionsCh: make(chan struct{}, defaultMaxConnections),
 		},
 		source: source,
 	}
@@ -53,8 +54,11 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 			}
 			server := *serverTemplate
 			server.conn = conn
-			if serverTemplate.maxConnectionsCh != nil {
-				serverTemplate.maxConnectionsCh <- struct{}{}
+			select {
+			case serverTemplate.maxConnectionsCh <- struct{}{}:
+			case <-ctx.Done():
+				_ = conn.Close()
+				return
 			}
 			go func() {
 				if serverTemplate.maxConnectionsCh != nil {
