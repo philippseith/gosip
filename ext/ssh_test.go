@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
+	mathrand "math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -217,13 +218,31 @@ func TestMultipleSIPClientsReachOneMuxOverSSH(t *testing.T) {
 
 	require.NoError(t, sipClientA.Ping())
 	require.NoError(t, sipClientB.Ping())
-	stateA, err := sipClientA.ReadDataState(0, 0, 0x101)
-	require.NoError(t, err)
-	stateB, err := sipClientB.ReadDataState(0, 0, 0x202)
-	require.NoError(t, err)
-	require.Equal(t, uint16(0x101), stateA.DataState)
-	require.Equal(t, uint16(0x202), stateB.DataState)
-	require.EqualValues(t, 2, source.reads.Load())
+	type pendingStateRead struct {
+		idn      uint32
+		response <-chan sip.Result[sip.ReadDataStateResponse]
+	}
+	const requestsPerClient = 20
+	requests := make([]pendingStateRead, 0, 2*requestsPerClient)
+	for i := range requestsPerClient {
+		idnA := uint32(0x1000 + i)
+		idnB := uint32(0x2000 + i)
+		requests = append(requests,
+			pendingStateRead{idn: idnA, response: sipClientA.GoReadDataState(0, 0, idnA)},
+			pendingStateRead{idn: idnB, response: sipClientB.GoReadDataState(0, 0, idnB)},
+		)
+	}
+	timeout := time.After(10 * time.Second)
+	for _, request := range requests {
+		select {
+		case result := <-request.response:
+			require.NoError(t, result.Err)
+			require.Equal(t, uint16(request.idn), result.Ok.DataState)
+		case <-timeout:
+			t.Fatal("timed out waiting for concurrent SIP reads over SSH")
+		}
+	}
+	require.EqualValues(t, 2*requestsPerClient, source.reads.Load())
 }
 
 func startSSHServer(t *testing.T, server *ext.SSHServer) string {
@@ -289,6 +308,7 @@ func (*countingSIPSource) ReadDescription(int, int, uint32, ...sip.RequestOption
 }
 
 func (s *countingSIPSource) ReadDataState(_, _ int, idn uint32, _ ...sip.RequestOption) (sip.ReadDataStateResponse, error) {
+	time.Sleep(time.Duration(5+mathrand.Intn(11)) * time.Millisecond)
 	s.reads.Add(1)
 	return sip.ReadDataStateResponse{DataState: uint16(idn)}, nil
 }
