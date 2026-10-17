@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	mathrand "math/rand"
 	"net"
@@ -190,7 +191,7 @@ func verifyForward(t *testing.T, client *cryptossh.Client, target string) {
 	}
 }
 
-func TestMultipleSIPClientsReachOneMuxOverSSH(t *testing.T) {
+func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	source := &countingSIPSource{}
 	sipTarget := startSIPMuxTarget(t, source)
 	targetHost, targetPortText, err := net.SplitHostPort(sipTarget)
@@ -216,30 +217,35 @@ func TestMultipleSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	sipClientA := newSIPClientOverSSH(t, sshClientA, sipTarget)
 	sipClientB := newSIPClientOverSSH(t, sshClientB, sipTarget)
 
-	require.NoError(t, sipClientA.Ping())
-	require.NoError(t, sipClientB.Ping())
-	type pendingStateRead struct {
-		idn      uint32
-		response <-chan sip.Result[sip.ReadDataStateResponse]
-	}
 	const requestsPerClient = 20
-	requests := make([]pendingStateRead, 0, 2*requestsPerClient)
-	for i := range requestsPerClient {
-		idnA := uint32(0x1000 + i)
-		idnB := uint32(0x2000 + i)
-		requests = append(requests,
-			pendingStateRead{idn: idnA, response: sipClientA.GoReadDataState(0, 0, idnA)},
-			pendingStateRead{idn: idnB, response: sipClientB.GoReadDataState(0, 0, idnB)},
-		)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	readStates := func(client sip.Client, firstIDN uint32) {
+		<-start
+		for i := range requestsPerClient {
+			idn := firstIDN + uint32(i)
+			response, err := client.ReadDataState(0, 0, idn)
+			if err != nil {
+				results <- fmt.Errorf("read IDN 0x%x: %w", idn, err)
+				return
+			}
+			if response.DataState != uint16(idn) {
+				results <- fmt.Errorf("read IDN 0x%x returned state 0x%x", idn, response.DataState)
+				return
+			}
+		}
+		results <- nil
 	}
+	go readStates(sipClientA, 0x1000)
+	go readStates(sipClientB, 0x2000)
+	close(start)
 	timeout := time.After(10 * time.Second)
-	for _, request := range requests {
+	for range 2 {
 		select {
-		case result := <-request.response:
-			require.NoError(t, result.Err)
-			require.Equal(t, uint16(request.idn), result.Ok.DataState)
+		case err := <-results:
+			require.NoError(t, err)
 		case <-timeout:
-			t.Fatal("timed out waiting for concurrent SIP reads over SSH")
+			t.Fatal("timed out waiting for concurrent SIP clients over SSH")
 		}
 	}
 	require.EqualValues(t, 2*requestsPerClient, source.reads.Load())
