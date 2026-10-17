@@ -75,23 +75,28 @@ on all variable-length PDU fields:
 
 Responses advertising larger values are rejected with an error.
 
-## Restricted SSH forwarding
+## SSH server integration
 
-The `ext` package provides an SSH server for local TCP forwarding. It requires a host signer, a login callback, and a target callback. Only SSH `direct-tcpip` channels are enabled; shell, exec, subsystem, remote-forwarding, and non-authorized targets are rejected. The login callback receives each username and either a password or public key; the target callback receives the authenticated username and requested host and port.
+The `ext` package installs the S/IP endpoint into a caller-owned `gliderlabs/ssh` server. `InstallSIPMux` creates a loopback TCP listener and passes it to a `Serve` callback; that callback chooses the mux, its `SyncClient`, and `sip.Serve` options. The function returns the listener for address discovery and lifecycle management. Configure SSH authentication, target checks, channel handlers, and the SSH `Serve` call directly on `gliderssh.Server`.
+
+If the server has no `LocalPortForwardingCallback`, the installer permits only the exact loopback S/IP listener target. An existing callback is preserved and must authorize that target itself. If `ChannelHandlers` is nil, only `direct-tcpip` is enabled; preconfigured handlers are preserved, so applications can add their own channels and requests.
 
 ```go
 package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 
+	gliderssh "github.com/gliderlabs/ssh"
 	"github.com/philippseith/gosip/ext"
+	"github.com/philippseith/gosip/sip"
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
-func serveSSH() error {
+func serveSSH(ctx context.Context, source sip.SyncClient) error {
 	hostKeyPEM, err := os.ReadFile("ssh_host_ed25519")
 	if err != nil {
 		return err
@@ -100,31 +105,41 @@ func serveSSH() error {
 	if err != nil {
 		return err
 	}
-	server, err := ext.NewSSHServer(
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(func(ctx context.Context, login ext.LoginInput) bool {
-			return ctx.Err() == nil && login.Method == ext.LoginPassword &&
-				login.Username == "operator" && login.Password == os.Getenv("SSH_PASSWORD")
-		}),
-		ext.WithTargetCallback(func(ctx context.Context, target ext.TargetRequest) bool {
-			return ctx.Err() == nil && target.Username == "operator" &&
-				target.Host == "192.168.1.50" && target.Port == 35021
-		}),
-	)
+	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.Err() == nil && ctx.User() == "operator" && password == os.Getenv("SSH_PASSWORD")
+		},
+	}
+	sipListener, err := ext.InstallSIPMux(server, func(listener net.Listener) error {
+		addr, ok := listener.Addr().(*net.TCPAddr)
+		if !ok {
+			return fmt.Errorf("unexpected S/IP listener address %T", listener.Addr())
+		}
+		server.LocalPortForwardingCallback = func(ctx gliderssh.Context, host string, port uint32) bool {
+			return ctx.Err() == nil && ctx.User() == "operator" &&
+				host == addr.IP.String() && port == uint32(addr.Port)
+		}
+		return sip.Serve(ctx, listener, sip.NewMux(source), sip.WithMaxConnections(32))
+	})
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:2222")
+	defer sipListener.Close()
+	fmt.Printf("S/IP forwarding target: %s\n", sipListener.Addr())
+
+	sshListener, err := net.Listen("tcp", "127.0.0.1:2222")
 	if err != nil {
 		return err
 	}
-	return server.Serve(listener)
+	defer sshListener.Close()
+	return server.Serve(sshListener)
 }
 ```
 
-Callbacks run for each input. Their context is scoped to the SSH connection, not an individual forwarding channel, and has no per-callback deadline. Derive a timeout for blocking external checks, pass the derived context to context-aware dependencies, and return `false` when the context is canceled. Do not retain the context after the callback returns.
+The authentication and forwarding callbacks receive a context scoped to the SSH connection, not an individual attempt or channel; there is no per-callback deadline. Derive a timeout for blocking external checks and do not retain the context after the callback returns.
 
-An SSH client can forward the authorized target with `ssh -p 2222 -N -L 35021:192.168.1.50:35021 operator@127.0.0.1`.
+The SSH server and mux are independent of the S/IP installer, so the same server can expose other TCP applications through its own forwarding policy. Add application-specific channel handlers as needed. Native SCP/SFTP requires session or subsystem handlers; TFTP uses UDP and needs a separate gateway. The S/IP target above is forwarded with `ssh -p 2222 -N -L 35021:127.0.0.1:<SIP-port> operator@127.0.0.1`, where `<SIP-port>` is the port printed by the server.
 
 
 

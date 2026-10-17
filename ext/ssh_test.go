@@ -22,7 +22,7 @@ import (
 	cryptossh "golang.org/x/crypto/ssh"
 )
 
-func TestSSHServerOnlyForwardsAuthenticatedAllowedTargets(t *testing.T) {
+func TestGliderlabsSSHServerForwardsAuthenticatedAllowedTCPApplications(t *testing.T) {
 	targetAddr := startEchoTarget(t)
 	targetHost, targetPortText, err := net.SplitHostPort(targetAddr)
 	require.NoError(t, err)
@@ -31,25 +31,27 @@ func TestSSHServerOnlyForwardsAuthenticatedAllowedTargets(t *testing.T) {
 
 	hostSigner := generateSigner(t)
 	clientSigner := generateSigner(t)
-	server, err := ext.NewSSHServer(
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(func(_ context.Context, input ext.LoginInput) bool {
-			switch input.Method {
-			case ext.LoginPassword:
-				return input.Username == "password-user" && input.Password == "correct horse battery staple"
-			case ext.LoginPublicKey:
-				return input.Username == "key-user" && gliderssh.KeysEqual(input.PublicKey, clientSigner.PublicKey())
-			default:
-				return false
-			}
-		}),
-		ext.WithTargetCallback(func(_ context.Context, target ext.TargetRequest) bool {
-			return (target.Username == "password-user" || target.Username == "key-user") &&
-				target.Host == targetHost && target.Port == uint32(targetPort)
-		}),
-	)
-	require.NoError(t, err)
-
+	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.User() == "password-user" && password == "correct horse battery staple"
+		},
+		PublicKeyHandler: func(ctx gliderssh.Context, key gliderssh.PublicKey) bool {
+			return ctx.User() == "key-user" && gliderssh.KeysEqual(key, clientSigner.PublicKey())
+		},
+		LocalPortForwardingCallback: func(ctx gliderssh.Context, host string, port uint32) bool {
+			return (ctx.User() == "password-user" || ctx.User() == "key-user") &&
+				host == targetHost && port == uint32(targetPort)
+		},
+		ReversePortForwardingCallback: func(gliderssh.Context, string, uint32) bool {
+			return false
+		},
+		ChannelHandlers: map[string]gliderssh.ChannelHandler{
+			"direct-tcpip": gliderssh.DirectTCPIPHandler,
+		},
+		RequestHandlers:   map[string]gliderssh.RequestHandler{},
+		SubsystemHandlers: map[string]gliderssh.SubsystemHandler{},
+	}
 	sshAddress := startSSHServer(t, server)
 
 	passwordClient := dialSSH(t, sshAddress, "password-user", []cryptossh.AuthMethod{
@@ -81,29 +83,34 @@ func TestSSHServerOnlyForwardsAuthenticatedAllowedTargets(t *testing.T) {
 	require.Error(t, err, "unlisted public key must not authenticate")
 }
 
-func TestNewSSHServerRequiresHostKeyAndCallbacks(t *testing.T) {
-	hostSigner := generateSigner(t)
-	loginCheck := ext.LoginCallback(func(context.Context, ext.LoginInput) bool { return false })
-	targetCheck := ext.TargetCallback(func(context.Context, ext.TargetRequest) bool { return false })
+func TestInstallSIPMuxRequiresAuthenticationCallback(t *testing.T) {
+	server := &gliderssh.Server{HostSigners: []gliderssh.Signer{generateSigner(t)}}
+	listener, err := ext.InstallSIPMux(server, func(net.Listener) error {
+		t.Fatal("Serve callback must not run without SSH authentication")
+		return nil
+	})
+	require.Nil(t, listener)
+	require.ErrorIs(t, err, ext.ErrInvalidSIPMuxInstall)
+}
 
-	_, err := ext.NewSSHServer(ext.WithHostSigner(hostSigner))
-	require.ErrorIs(t, err, ext.ErrInvalidSSHServerConfig)
-	_, err = ext.NewSSHServer(ext.WithHostSigner(hostSigner), ext.WithLoginCallback(loginCheck))
-	require.ErrorIs(t, err, ext.ErrInvalidSSHServerConfig)
-	_, err = ext.NewSSHServer(ext.WithHostSigner(hostSigner), ext.WithTargetCallback(targetCheck))
-	require.ErrorIs(t, err, ext.ErrInvalidSSHServerConfig)
-	_, err = ext.NewSSHServer(
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(nil),
-		ext.WithTargetCallback(targetCheck),
-	)
-	require.ErrorIs(t, err, ext.ErrInvalidSSHServerConfig)
-	_, err = ext.NewSSHServer(
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(loginCheck),
-		ext.WithTargetCallback(nil),
-	)
-	require.ErrorIs(t, err, ext.ErrInvalidSSHServerConfig)
+func TestInstallSIPMuxClosesListenerWhenServeFails(t *testing.T) {
+	serveErr := errors.New("S/IP Serve failed")
+	server := &gliderssh.Server{
+		HostSigners:     []gliderssh.Signer{generateSigner(t)},
+		PasswordHandler: func(gliderssh.Context, string) bool { return true },
+	}
+	var targetAddr string
+	listener, err := ext.InstallSIPMux(server, func(listener net.Listener) error {
+		targetAddr = listener.Addr().String()
+		return serveErr
+	})
+	require.Nil(t, listener)
+	require.ErrorIs(t, err, serveErr)
+	conn, err := net.DialTimeout("tcp", targetAddr, 100*time.Millisecond)
+	require.Error(t, err, "failed installation must close the target listener")
+	if conn != nil {
+		_ = conn.Close()
+	}
 }
 
 func startEchoTarget(t *testing.T) string {
@@ -193,27 +200,43 @@ func verifyForward(t *testing.T, client *cryptossh.Client, target string) {
 
 func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	source := &countingSIPSource{}
-	sipTarget := startSIPMuxTarget(t, source)
-	targetHost, targetPortText, err := net.SplitHostPort(sipTarget)
+	applicationTarget := startEchoTarget(t)
+	applicationHost, applicationPortText, err := net.SplitHostPort(applicationTarget)
 	require.NoError(t, err)
-	targetPort, err := strconv.ParseUint(targetPortText, 10, 16)
+	applicationPort, err := strconv.ParseUint(applicationPortText, 10, 16)
 	require.NoError(t, err)
-
 	hostSigner := generateSigner(t)
-	server, err := ext.NewSSHServer(
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(func(_ context.Context, input ext.LoginInput) bool {
-			return input.Method == ext.LoginPassword && input.Username == "operator" && input.Password == "secret"
-		}),
-		ext.WithTargetCallback(func(_ context.Context, target ext.TargetRequest) bool {
-			return target.Username == "operator" && target.Host == targetHost && target.Port == uint32(targetPort)
-		}),
-	)
+	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.User() == "operator" && password == "secret"
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	sipTargetListener, err := ext.InstallSIPMux(server, func(listener net.Listener) error {
+		addr, ok := listener.Addr().(*net.TCPAddr)
+		if !ok {
+			return fmt.Errorf("S/IP listener has unexpected address type %T", listener.Addr())
+		}
+		server.LocalPortForwardingCallback = func(sshCtx gliderssh.Context, host string, port uint32) bool {
+			isSIPTarget := host == addr.IP.String() && port == uint32(addr.Port)
+			isApplicationTarget := host == applicationHost && port == uint32(applicationPort)
+			return sshCtx.User() == "operator" && (isSIPTarget || isApplicationTarget)
+		}
+		mux := sip.NewMux(source)
+		return sip.Serve(ctx, listener, mux, sip.WithBusyTimeout(3000), sip.WithMaxConnections(8))
+	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		cancel()
+		_ = sipTargetListener.Close()
+	})
+	sipTarget := sipTargetListener.Addr().String()
 	sshAddress := startSSHServer(t, server)
 
 	sshClientA := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
 	sshClientB := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
+	verifyForward(t, sshClientA, applicationTarget)
 	sipClientA := newSIPClientOverSSH(t, sshClientA, sipTarget)
 	sipClientB := newSIPClientOverSSH(t, sshClientB, sipTarget)
 
@@ -251,7 +274,7 @@ func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	require.EqualValues(t, 2*requestsPerClient, source.reads.Load())
 }
 
-func startSSHServer(t *testing.T, server *ext.SSHServer) string {
+func startSSHServer(t *testing.T, server *gliderssh.Server) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -268,19 +291,6 @@ func startSSHServer(t *testing.T, server *ext.SSHServer) string {
 		case <-time.After(time.Second):
 			t.Error("SSH server did not stop")
 		}
-	})
-	return listener.Addr().String()
-}
-
-func startSIPMuxTarget(t *testing.T, source sip.SyncClient) string {
-	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	ctx, cancel := context.WithCancel(context.Background())
-	require.NoError(t, sip.Serve(ctx, listener, sip.NewMux(source)))
-	t.Cleanup(func() {
-		cancel()
-		_ = listener.Close()
 	})
 	return listener.Addr().String()
 }
