@@ -134,6 +134,45 @@ func TestMuxServeCoalescesConcurrentReads(t *testing.T) {
 	assert.Equal(t, 2, source.callCount(7))
 }
 
+func TestMuxServeNegotiatesUpstreamTimeouts(t *testing.T) {
+	upstreamListener := NewListener()
+	upstreamCtx, cancelUpstream := context.WithCancel(context.Background())
+	defer cancelUpstream()
+	require.NoError(t, sip.Serve(upstreamCtx, upstreamListener, SimpleSyncClient{},
+		sip.WithBusyTimeout(2001), sip.WithLeaseTimeout(10001)))
+
+	upstreamClient, err := sip.NewClient("tcp", "upstream",
+		sip.WithBusyTimeout(3001),
+		sip.WithLeaseTimeout(30001),
+		sip.WithDial(func(_ context.Context, network, address string) (io.ReadWriteCloser, error) {
+			return upstreamListener.Dial(network, address)
+		}),
+	)
+	require.NoError(t, err)
+	defer upstreamClient.Close()
+	require.False(t, upstreamClient.Connected())
+
+	downstreamListener := NewListener()
+	downstreamCtx, cancelDownstream := context.WithCancel(context.Background())
+	defer cancelDownstream()
+	require.NoError(t, sip.Serve(downstreamCtx, downstreamListener, sip.NewMux(upstreamClient),
+		sip.WithBusyTimeout(4001), sip.WithLeaseTimeout(40001)))
+
+	downstreamConn, err := sip.Dial(context.Background(), "tcp", "downstream",
+		sip.WithBusyTimeout(5001),
+		sip.WithLeaseTimeout(50001),
+		sip.WithDial(func(_ context.Context, network, address string) (io.ReadWriteCloser, error) {
+			return downstreamListener.Dial(network, address)
+		}),
+	)
+	require.NoError(t, err)
+	defer downstreamConn.Close()
+
+	assert.Equal(t, 2001*time.Millisecond, downstreamConn.BusyTimeout())
+	assert.Equal(t, 10001*time.Millisecond, downstreamConn.LeaseTimeout())
+	assert.True(t, upstreamClient.Connected())
+}
+
 type countedSyncClient struct {
 	mu      sync.Mutex
 	calls   map[uint32]int
