@@ -3,6 +3,7 @@ package sip
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/joomcode/errorx"
 )
@@ -11,6 +12,12 @@ import (
 // the S/IP requests to the underlying source. Reads are optimized by reading only once and
 // broadcasting the response to the listeners of all Serve calls. NewMux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
+
+// When used with Serve, positive negotiated busy and lease timeouts from the
+// source are advertised downstream. If the source exposes timeout properties
+// that are not negotiated yet, it is pinged before the downstream Connect; a
+// Ping error fails that Connect. If no positive values are available, Serve's
+// configured timeout values remain in effect.
 //
 // Example:
 //
@@ -26,6 +33,33 @@ type mux struct {
 	source SyncClient
 	jobs   map[muxJob][]chan Result[any]
 	mx     sync.Mutex
+}
+
+type timeoutProvider interface {
+	BusyTimeout() time.Duration
+	LeaseTimeout() time.Duration
+}
+
+func (m *mux) negotiatedTimeouts() (busy, lease time.Duration, available bool, err error) {
+	provider, ok := m.source.(timeoutProvider)
+	if !ok {
+		return 0, 0, false, nil
+	}
+
+	busy, lease = provider.BusyTimeout(), provider.LeaseTimeout()
+	if busy > 0 && lease > 0 {
+		return busy, lease, true, nil
+	}
+
+	if err := m.source.Ping(); err != nil {
+		return 0, 0, false, err
+	}
+
+	busy, lease = provider.BusyTimeout(), provider.LeaseTimeout()
+	if busy <= 0 || lease <= 0 {
+		return busy, lease, false, nil
+	}
+	return busy, lease, true, nil
 }
 
 type muxJob struct {

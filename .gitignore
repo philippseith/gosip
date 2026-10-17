@@ -27,3 +27,5 @@ sip/testdata/test_config.json
 .aider*
 
 build/**
+
+graphify-out/cache/**

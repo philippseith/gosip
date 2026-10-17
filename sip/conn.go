@@ -110,7 +110,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 
 	sendRecvCtx := c.startLoops()
 
-	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck 
+	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck
 		_ = c.cleanUp()
 		return nil, err
 	}
@@ -185,6 +185,9 @@ func (c *conn) startLoops() context.Context {
 		<-sendRecvCtx.Done()
 		c.cancelAllRequests(errorx.EnsureStackTrace(context.Cause(sendRecvCtx)))
 		c.setClosed()
+		if err := c.cleanUp(); err != nil {
+			logger.Printf("%s: closing failed connection: %v", c.address, err)
+		}
 	}()
 
 	return sendRecvCtx
@@ -219,7 +222,7 @@ func (c *conn) Connected() bool {
 	defer c.mxCR.RUnlock()
 	defer c.mxState.RUnlock()
 
-	return c.Conn != nil && c.connectResponse.Version != 0
+	return c.Conn != nil && c.connectResponse.Version != 0 && !c.closed
 }
 
 func (c *conn) BusyTimeout() time.Duration {

@@ -31,7 +31,7 @@ func Broadcast[TResp PDU, TReq PDU](ctx context.Context, interfaceName string, r
 		return nil, err
 	}
 
-	ch := make(chan Result[TResp], 512) // Such many devices should be a pretty uncommon case
+	ch := make(chan Result[TResp], 64) // Bound retained responses while allowing common bursts
 	var wg sync.WaitGroup
 
 	for _, conn := range reqConns {
@@ -110,7 +110,7 @@ func broadcast[TResp PDU](ctx context.Context, wg *sync.WaitGroup, conn *request
 
 	_, err := conn.conn.WriteToUDP(requestBytes, conn.broadcastAddr)
 	if err != nil {
-		ch <- Err[TResp](errorx.EnsureStackTrace(err))
+		_ = sendUDPResult(ctx, ch, Err[TResp](errorx.EnsureStackTrace(err)))
 		return
 	}
 
@@ -120,7 +120,7 @@ func broadcast[TResp PDU](ctx context.Context, wg *sync.WaitGroup, conn *request
 			return
 		default:
 			// Blocks until a reponse comes in or the timeout elapses
-			if !listenUDP(conn.conn, timeout, ch) {
+			if !listenUDP(ctx, conn.conn, timeout, ch) {
 				return
 			}
 		}

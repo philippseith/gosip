@@ -22,6 +22,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		connOptions: connOptions{
 			userBusyTimeout:  2000,
 			userLeaseTimeout: 10000,
+			maxConnectionsCh: make(chan struct{}, defaultMaxConnections),
 		},
 		source: source,
 	}
@@ -53,8 +54,11 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 			}
 			server := *serverTemplate
 			server.conn = conn
-			if serverTemplate.maxConnectionsCh != nil {
-				serverTemplate.maxConnectionsCh <- struct{}{}
+			select {
+			case serverTemplate.maxConnectionsCh <- struct{}{}:
+			case <-ctx.Done():
+				_ = conn.Close()
+				return
 			}
 			go func() {
 				if serverTemplate.maxConnectionsCh != nil {
@@ -95,7 +99,7 @@ func (c connServer) serve(ctx context.Context) {
 	}
 }
 
-func (c connServer) handleMessages() error { // nolint:cyclop
+func (c *connServer) handleMessages() error { // nolint:cyclop
 	if err := c.conn.SetReadDeadline(time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)); err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
@@ -124,11 +128,21 @@ func (c connServer) handleMessages() error { // nolint:cyclop
 	}
 }
 
-func (c connServer) handleConnect(transactionID uint32) error {
+func (c *connServer) handleConnect(transactionID uint32) error {
 	req := ConnectRequest{}
 	err := req.Read(c.conn)
 	if err != nil {
 		return err
+	}
+	if muxSource, ok := c.source.(*mux); ok {
+		busy, lease, available, err := muxSource.negotiatedTimeouts()
+		if err != nil {
+			return err
+		}
+		if available {
+			c.userBusyTimeout = uint32(busy / time.Millisecond)
+			c.userLeaseTimeout = uint32(lease / time.Millisecond)
+		}
 	}
 	resp := &ConnectResponse{
 		connectResponse: connectResponse{

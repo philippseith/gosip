@@ -69,6 +69,20 @@ Do not delete them.
 - **`dev_test.go`** uses `package sip` (internal); all other test files in `sip/` use
   `package sip_test` (external). Keep this separation.
 
+## Graphify
+
+Use the local Graphify CLI as a supplementary structural index for call-flow, dependency, and relationship questions. Check the installed version with `graphify --version`; flags may differ by release.
+
+- From the repository root, use `graphify query "<specific question>" --budget 1500` to find relevant nodes and edges. Narrow call-flow queries with `--context call`; use `--dfs` for deeper traversal.
+- Follow up with `graphify explain "<node from query>"` for one concept or `graphify path "<source>" "<target>"` for a relationship path. Use `--graph <path>` when the graph is not at the default `graphify-out/graph.json`.
+- If no graph exists and structural context would help, build one with `graphify extract . --code-only`. This skips semantic document/media extraction and needs no model key. Inspect the command summary and use the `graph.json` path it reports. The CLI also supports `--out <dir>` for a separate output root.
+- Before extracting, check existing output and repository ignore/tracking rules. Graphify output can contain source-derived context; treat it like the source. `graphify-out/` is not currently ignored by this repository, so prefer a temporary output root for one-off analysis rather than leaving generated files in the checkout.
+- Refresh a saved default graph after source changes with `graphify update .`; after a pull or merge, refresh explicitly before querying. For a temporary graph, re-extract to refresh it.
+- Treat Graphify output as navigation evidence, not as verified behavior. Distinguish `EXTRACTED` from `INFERRED` edges, inspect cited source lines before relying on a claim, and do not treat a missing node/path as proof that no relationship exists.
+- `/graphify .` or `$graphify` is an assistant-chat skill instruction, not a shell command. Use `graphify ...` for CLI operations.
+
+References: [Quickstart](https://docs.graphify.com/quickstart), [querying](https://docs.graphify.com/guides/querying), [CLI reference](https://docs.graphify.com/reference/overview), [incremental updates](https://docs.graphify.com/guides/incremental-updates), [outputs](https://docs.graphify.com/concepts/outputs).
+
 ## Key dependencies
 
 | Package | Role |
