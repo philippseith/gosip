@@ -77,12 +77,13 @@ Responses advertising larger values are rejected with an error.
 
 ## Restricted SSH forwarding
 
-The `ext` package provides an SSH server for local TCP forwarding. It requires a host signer, at least one password or authorized-key credential, and an explicit allowlist of forwarding targets. Only SSH `direct-tcpip` channels are enabled; shell, exec, subsystem, remote-forwarding, and non-allowlisted target requests are rejected.
+The `ext` package provides an SSH server for local TCP forwarding. It requires a host signer, a login callback, and a target callback. Only SSH `direct-tcpip` channels are enabled; shell, exec, subsystem, remote-forwarding, and non-authorized targets are rejected. The login callback receives each username and either a password or public key; the target callback receives the authenticated username and requested host and port.
 
 ```go
 package main
 
 import (
+	"context"
 	"net"
 	"os"
 
@@ -99,14 +100,16 @@ func serveSSH() error {
 	if err != nil {
 		return err
 	}
-	authorizedKey, err := os.ReadFile("operator.pub")
-	if err != nil {
-		return err
-	}
 	server, err := ext.NewSSHServer(
 		ext.WithHostSigner(hostSigner),
-		ext.WithAuthorizedKey("operator", authorizedKey),
-		ext.WithForwardingTargets("192.168.1.50:35021"),
+		ext.WithLoginCallback(func(ctx context.Context, login ext.LoginInput) bool {
+			return ctx.Err() == nil && login.Method == ext.LoginPassword &&
+				login.Username == "operator" && login.Password == os.Getenv("SSH_PASSWORD")
+		}),
+		ext.WithTargetCallback(func(ctx context.Context, target ext.TargetRequest) bool {
+			return ctx.Err() == nil && target.Username == "operator" &&
+				target.Host == "192.168.1.50" && target.Port == 35021
+		}),
 	)
 	if err != nil {
 		return err
@@ -119,6 +122,9 @@ func serveSSH() error {
 }
 ```
 
-`WithPasswordCredential(username, password)` can be used instead of an authorized key. An SSH client can then forward the configured target with `ssh -p 2222 -N -L 35021:192.168.1.50:35021 operator@127.0.0.1`.
+Callbacks run for each input. Their context is scoped to the SSH connection, not an individual forwarding channel, and has no per-callback deadline. Derive a timeout for blocking external checks, pass the derived context to context-aware dependencies, and return `false` when the context is canceled. Do not retain the context after the callback returns.
+
+An SSH client can forward the authorized target with `ssh -p 2222 -N -L 35021:192.168.1.50:35021 operator@127.0.0.1`.
+
 
 
