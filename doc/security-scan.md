@@ -5,7 +5,7 @@
 - Scanner: OMP Native Security
 - Scan ID: `secscan_01a13b8e6b6b7152aabc8e7e3a7c6f0b`
 - Target: full repository (`gosip`)
-- Result: **7 open findings** — 6 medium, 1 low
+- Result: **7 findings** — 1 resolved, 6 open
 - Coverage: **partial**
 - Disposition: scan findings have not been independently exploit-validated.
 
@@ -21,6 +21,7 @@ A separate `govulncheck ./...` attempt did not produce a vulnerability result: t
 - **Rule / ID:** `gosip.conn-context-cancellation-replay` / `secf_334b0b0afc8b9f055eb5f071`
 - **Locations:** `sip/conn_send_recv.go:334-350`, `sip/conn_send_recv.go:163-169`; supporting: `sip/conn.go:293-307`
 - **Evidence:** `sendRequestWaitForResponseAndRead` enqueues the request before selecting on cancellation. Its cancellation branch enqueues the same PDU again with `context.WithoutCancel`. If the original response arrives, dispatch sends the callback to the original buffered channel and waits for it, while the canceled caller is waiting on the duplicate request channel. The receive loop can stall. Because `WriteData` uses this helper, the device write can also be repeated.
+- **Status:** Fixed. Cancellation now drains the original request channel instead of enqueuing the same PDU again.
 - **Conditions / impact:** Reachable through public `Conn` methods with a canceled `WithContext`; direct `Conn` calls do not necessarily close the connection on deadline. A side-effecting operation can be duplicated and response processing can stop.
 - **Suggested fix:** Preserve and drain the original request channel after cancellation; do not enqueue a second PDU. Ensure a canceled caller cannot leave response dispatch waiting on an unconsumed callback.
 

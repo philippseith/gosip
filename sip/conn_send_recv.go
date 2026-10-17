@@ -330,8 +330,9 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 	// wait for the function by which we can read the response
 	// (it comes from the receiveLoop calling receiveAndDispatch which reads the header)
 	// The receiveLoop blocks read access to the net.Conn until the respFunc is executed
+	respCh := c.sendRequest(ctx, req)
 	select {
-	case respFunc := <-c.sendRequest(ctx, req):
+	case respFunc := <-respCh:
 		// Fill it by using PDU.Read()
 		return respFunc(resp)
 	case <-ctx.Done():
@@ -344,7 +345,7 @@ func sendRequestWaitForResponseAndRead[Response PDU](ctx context.Context, c *con
 			// Guard with closedCh so we don't leak if the connection closes before the send
 			// loop picks up the request.
 			select {
-			case respFunc := <-c.sendRequest(context.WithoutCancel(ctx), req):
+			case respFunc := <-respCh:
 				_ = respFunc(resp)
 			case <-closedCh:
 			}
