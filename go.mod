@@ -4,13 +4,16 @@ go 1.26.0
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/gliderlabs/ssh v0.3.8
 	github.com/joomcode/errorx v1.2.0
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
+	golang.org/x/crypto v0.31.0
 )
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
