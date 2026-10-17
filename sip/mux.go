@@ -12,6 +12,12 @@ import (
 // the S/IP requests to the underlying source. Reads are optimized by reading only once and
 // broadcasting the response to the listeners of all Serve calls. NewMux is useful when the source has
 // limited resources and can't handle a larger number of multiple connections.
+
+// When used with Serve, positive negotiated busy and lease timeouts from the
+// source are advertised downstream. If the source exposes timeout properties
+// that are not negotiated yet, it is pinged before the downstream Connect; a
+// Ping error fails that Connect. If no positive values are available, Serve's
+// configured timeout values remain in effect.
 //
 // Example:
 //
