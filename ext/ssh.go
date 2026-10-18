@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"sync"
 
@@ -72,9 +73,7 @@ func AttachSIPSource(
 	options := append([]sip.ConnOption(nil), connOptions...)
 	if server.ChannelHandlers == nil {
 		server.ChannelHandlers = make(map[string]gliderssh.ChannelHandler, len(gliderssh.DefaultChannelHandlers)+1)
-		for channelType, handler := range gliderssh.DefaultChannelHandlers {
-			server.ChannelHandlers[channelType] = handler
-		}
+		maps.Copy(server.ChannelHandlers, gliderssh.DefaultChannelHandlers)
 	}
 	server.ChannelHandlers["direct-tcpip"] = sipChannelHandler(ctx, sourceFactory, options)
 	return nil
