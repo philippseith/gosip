@@ -83,12 +83,27 @@ func TestGliderlabsSSHServerForwardsAuthenticatedAllowedTCPApplications(t *testi
 	require.Error(t, err, "unlisted public key must not authenticate")
 }
 
-func TestAttachSIPSourceRequiresAuthentication(t *testing.T) {
-	factory := func(context.Context, ext.TargetRequest) (sip.SyncClient, error) {
-		return &countingSIPSource{}, nil
-	}
-	err := ext.AttachSIPSource(context.Background(), &gliderssh.Server{}, factory, nil)
-	require.ErrorIs(t, err, ext.ErrInvalidSIPMuxInstall)
+func TestAttachSIPSourceAllowsUnauthenticatedServer(t *testing.T) {
+	const target = "127.0.0.1:35021"
+	hostSigner := generateSigner(t)
+	source := &countingSIPSource{}
+	server := &gliderssh.Server{HostSigners: []gliderssh.Signer{hostSigner}}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	factory := ext.SIPSourceFactory(func(_ context.Context, request ext.TargetRequest) (sip.SyncClient, error) {
+		if request.Host != "127.0.0.1" || request.Port != 35021 {
+			return nil, errors.New("target is not allowed")
+		}
+		return sip.NewMux(source), nil
+	})
+	require.NoError(t, ext.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)}))
+	sshAddress := startSSHServer(t, server)
+	sshClient := dialSSH(t, sshAddress, "guest", nil, hostSigner.PublicKey())
+	sipClient := newSIPClientOverSSH(t, sshClient, target)
+	response, err := sipClient.ReadDataState(0, 0, 0x3000)
+	require.NoError(t, err)
+	require.Equal(t, uint16(0x3000), response.DataState)
+	require.EqualValues(t, 1, source.reads.Load())
 }
 
 func TestAttachSIPSourceAppliesConnOptions(t *testing.T) {

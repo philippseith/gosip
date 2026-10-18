@@ -79,7 +79,7 @@ Responses advertising larger values are rejected with an error.
 
 `ext.AttachSIPSource` adds a S/IP bridge to a caller-owned `gliderlabs/ssh` server. It installs a `net.Listener` that accepts streams from SSH `direct-tcpip` channels and calls `sip.Serve` for each channel. No TCP listener or destination dial is created.
 
-The caller configures host keys and authentication directly on `gliderssh.Server`. `AttachSIPSource` receives a factory and a slice of `sip.ConnOption`. The factory runs once per `direct-tcpip` channel and returns the `sip.SyncClient` for that channel; it may return a source or a mux such as `sip.NewMux(source)`. Return an error to reject a target. The optional server `LocalPortForwardingCallback` is also checked before the factory.
+The caller configures host keys and authentication directly on `gliderssh.Server`. Authentication is optional to `AttachSIPSource`: gliderlabs permits unauthenticated SSH when no authentication handlers are configured. Use that only on a trusted network or listener. The factory can reject destinations, but `TargetRequest.Username` is not an authenticated identity unless server authentication is configured.
 
 ```go
 package main
@@ -133,7 +133,7 @@ func serveSSH(ctx context.Context, source sip.SyncClient) error {
 }
 ```
 
-The factory is called concurrently and should be safe for concurrent use. Its parameter is the standard `context.Context`, derived from the SSH connection and canceled when that connection or the attachment stops. `gliderssh.Context` is the richer context supplied to gliderlabs callbacks: it embeds `context.Context` and adds SSH-specific metadata and synchronization methods. The factory receives the standard interface for decoupling; `TargetRequest` carries the authenticated username and forwarding destination.
+The factory is called concurrently and should be safe for concurrent use. Its parameter is the standard `context.Context`, derived from the SSH connection and canceled when that connection or the attachment stops. `gliderssh.Context` is the richer context supplied to gliderlabs callbacks: it embeds `context.Context` and adds SSH-specific metadata and synchronization methods. The factory receives the standard interface for decoupling; `TargetRequest` carries the requested username and forwarding destination.
 
 The installer preserves the server's other channel, request, and subsystem handlers, including gliderlabs' default session handler when no channel map was supplied. It reserves `direct-tcpip`; attaching to a server with an existing handler for that type returns an error. SCP/SFTP can use configured session or subsystem handlers; a TFTP service needs a UDP gateway. The example's `127.0.0.1:35021` is a logical SSH target, not a server-side TCP listener: `ssh -p 2222 -N -L 35021:127.0.0.1:35021 operator@127.0.0.1` sends each channel directly to its factory-selected S/IP service.
 

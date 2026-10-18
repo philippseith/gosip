@@ -35,11 +35,12 @@ type SIPSourceFactory func(ctx context.Context, target TargetRequest) (sip.SyncC
 // per-channel sip.Serve loop. connOptions are passed to each Serve call. The
 // supplied context and the SSH connection context control that call's lifetime.
 //
-// Configure SSH authentication directly on server. If its
-// LocalPortForwardingCallback is set, that callback is an additional filter;
-// sourceFactory can perform target selection and reject targets by returning an
-// error. Other channel, request, and subsystem handlers are preserved. A
-// pre-existing direct-tcpip handler is rejected rather than replaced. Call
+// Configure SSH authentication directly on server. Authentication is not
+// required by this attachment: gliderlabs allows unauthenticated clients when
+// no authentication handlers are configured. Do not treat TargetRequest.Username
+// as an authenticated identity in that case. A pre-existing
+// LocalPortForwardingCallback remains an additional filter. Other handlers are
+// preserved; a pre-existing direct-tcpip handler is rejected. Call
 // AttachSIPSource before server.Serve.
 func AttachSIPSource(
 	ctx context.Context,
@@ -58,9 +59,6 @@ func AttachSIPSource(
 	}
 	if sourceFactory == nil {
 		return invalidSIPSourceInstall("S/IP source factory must be non-nil")
-	}
-	if server.PasswordHandler == nil && server.PublicKeyHandler == nil && server.KeyboardInteractiveHandler == nil {
-		return invalidSIPSourceInstall("configure SSH authentication on the server")
 	}
 	if server.ChannelHandlers != nil && server.ChannelHandlers["direct-tcpip"] != nil {
 		return invalidSIPSourceInstall("direct-tcpip already has a channel handler")
