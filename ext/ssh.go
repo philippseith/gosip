@@ -17,36 +17,6 @@ import (
 
 var ErrInvalidSIPMuxInstall = errors.New("invalid S/IP mux installation")
 
-// SSHServerOption configures SSH authentication, forwarding authorization, and host keys.
-type SSHServerOption func(*sshServerConfig) error
-
-type sshServerConfig struct {
-	hostKeys    []gliderssh.Signer
-	loginCheck  LoginCallback
-	targetCheck TargetCallback
-}
-
-// LoginMethod identifies the SSH authentication method in LoginInput.
-type LoginMethod uint8
-
-const (
-	LoginPassword LoginMethod = iota + 1
-	LoginPublicKey
-)
-
-// LoginInput contains the client-supplied value for one authentication attempt.
-// Password is set for LoginPassword; PublicKey is set for LoginPublicKey.
-type LoginInput struct {
-	Username  string
-	Method    LoginMethod
-	Password  string
-	PublicKey gliderssh.PublicKey
-}
-
-// LoginCallback checks each SSH authentication attempt. Its context is scoped to
-// the SSH connection, has no per-attempt deadline, and must not be retained.
-type LoginCallback func(context.Context, LoginInput) bool
-
 // TargetRequest identifies an SSH client's requested direct-tcpip destination.
 type TargetRequest struct {
 	Username string
@@ -54,131 +24,123 @@ type TargetRequest struct {
 	Port     uint32
 }
 
-// TargetCallback authorizes each SSH local-forwarding request. Its context is
-// scoped to the SSH connection, has no per-request deadline, and must not be retained.
-type TargetCallback func(context.Context, TargetRequest) bool
+// SIPSourceFactory selects the SyncClient used for one SSH forwarding target.
+// Return an error to reject the target. The returned client may be a source or
+// a mux such as sip.NewMux(source). The factory may be called concurrently.
+// ctx is a standard context.Context derived from the SSH connection context.
+type SIPSourceFactory func(ctx context.Context, target TargetRequest) (sip.SyncClient, error)
 
-// WithHostSigner adds a host key to the caller-owned SSH server.
-func WithHostSigner(signer gliderssh.Signer) SSHServerOption {
-	return func(config *sshServerConfig) error {
-		if signer == nil || signer.PublicKey() == nil {
-			return invalidSIPMuxInstall("host signer must be non-nil")
-		}
-		config.hostKeys = append(config.hostKeys, signer)
-		return nil
-	}
-}
-
-// WithLoginCallback sets the callback used for password and public-key authentication.
-func WithLoginCallback(callback LoginCallback) SSHServerOption {
-	return func(config *sshServerConfig) error {
-		if callback == nil {
-			return invalidSIPMuxInstall("login callback must be non-nil")
-		}
-		config.loginCheck = callback
-		return nil
-	}
-}
-
-// WithTargetCallback sets the callback used for every S/IP direct-tcpip channel.
-func WithTargetCallback(callback TargetCallback) SSHServerOption {
-	return func(config *sshServerConfig) error {
-		if callback == nil {
-			return invalidSIPMuxInstall("target callback must be non-nil")
-		}
-		config.targetCheck = callback
-		return nil
-	}
-}
-
-// InstallSIPMux adds S/IP handling to a caller-owned gliderlabs SSH server.
-// Each authorized direct-tcpip channel is delivered to sip.Serve as a net.Conn;
-// no TCP listener or destination dial is created. ctx controls the Serve loop.
+// AttachSIPSource adds S/IP handling to a caller-owned gliderlabs SSH server.
+// Each authorized direct-tcpip channel gets a source from sourceFactory and a
+// per-channel sip.Serve loop. connOptions are passed to each Serve call. The
+// supplied context and the SSH connection context control that call's lifetime.
 //
-// The supplied SSH options configure host keys and callback-based login and
-// target checks. Other SSH handlers remain untouched. A pre-existing
-// direct-tcpip handler is rejected rather than silently replaced. Call this
-// before server.Serve.
-func InstallSIPMux(
+// Configure SSH authentication directly on server. If its
+// LocalPortForwardingCallback is set, that callback is an additional filter;
+// sourceFactory can perform target selection and reject targets by returning an
+// error. Other channel, request, and subsystem handlers are preserved. A
+// pre-existing direct-tcpip handler is rejected rather than replaced. Call
+// AttachSIPSource before server.Serve.
+func AttachSIPSource(
 	ctx context.Context,
 	server *gliderssh.Server,
-	mux sip.SyncClient,
+	sourceFactory SIPSourceFactory,
 	connOptions []sip.ConnOption,
-	sshOptions ...SSHServerOption,
 ) error {
 	if ctx == nil {
-		return invalidSIPMuxInstall("context must be non-nil")
+		return invalidSIPSourceInstall("context must be non-nil")
 	}
 	if err := ctx.Err(); err != nil {
 		return errorx.EnsureStackTrace(err)
 	}
 	if server == nil {
-		return invalidSIPMuxInstall("SSH server must be non-nil")
+		return invalidSIPSourceInstall("SSH server must be non-nil")
 	}
-	if mux == nil {
-		return invalidSIPMuxInstall("S/IP mux must be non-nil")
+	if sourceFactory == nil {
+		return invalidSIPSourceInstall("S/IP source factory must be non-nil")
 	}
-	if len(sshOptions) == 0 {
-		return invalidSIPMuxInstall("SSH options are required")
-	}
-
-	config := sshServerConfig{}
-	for _, option := range sshOptions {
-		if option == nil {
-			return invalidSIPMuxInstall("SSH option must be non-nil")
-		}
-		if err := option(&config); err != nil {
-			return err
-		}
-	}
-	if len(config.hostKeys) == 0 && len(server.HostSigners) == 0 {
-		return invalidSIPMuxInstall("at least one host signer is required")
-	}
-	if config.loginCheck == nil && server.PasswordHandler == nil && server.PublicKeyHandler == nil && server.KeyboardInteractiveHandler == nil {
-		return invalidSIPMuxInstall("an SSH authentication callback is required")
-	}
-	if config.targetCheck == nil && server.LocalPortForwardingCallback == nil {
-		return invalidSIPMuxInstall("a target authorization callback is required")
+	if server.PasswordHandler == nil && server.PublicKeyHandler == nil && server.KeyboardInteractiveHandler == nil {
+		return invalidSIPSourceInstall("configure SSH authentication on the server")
 	}
 	if server.ChannelHandlers != nil && server.ChannelHandlers["direct-tcpip"] != nil {
-		return invalidSIPMuxInstall("direct-tcpip already has a channel handler")
+		return invalidSIPSourceInstall("direct-tcpip already has a channel handler")
+	}
+	for _, option := range connOptions {
+		if option == nil {
+			return invalidSIPSourceInstall("ConnOption must be non-nil")
+		}
 	}
 
-	listener := newSIPChannelListener()
-	if err := sip.Serve(ctx, listener, mux, connOptions...); err != nil {
-		_ = listener.Close()
-		return errorx.EnsureStackTrace(err)
-	}
-
-	for _, signer := range config.hostKeys {
-		server.AddHostKey(signer)
-	}
-	if config.loginCheck != nil {
-		server.PasswordHandler = func(ctx gliderssh.Context, password string) bool {
-			return config.loginCheck(ctx, LoginInput{
-				Username: ctx.User(),
-				Method:   LoginPassword,
-				Password: password,
-			})
-		}
-		server.PublicKeyHandler = func(ctx gliderssh.Context, key gliderssh.PublicKey) bool {
-			return config.loginCheck(ctx, LoginInput{
-				Username:  ctx.User(),
-				Method:    LoginPublicKey,
-				PublicKey: key,
-			})
-		}
-	}
-	if config.targetCheck != nil {
-		server.LocalPortForwardingCallback = func(ctx gliderssh.Context, host string, port uint32) bool {
-			return config.targetCheck(ctx, TargetRequest{Username: ctx.User(), Host: host, Port: port})
-		}
-	}
+	options := append([]sip.ConnOption(nil), connOptions...)
 	if server.ChannelHandlers == nil {
-		server.ChannelHandlers = make(map[string]gliderssh.ChannelHandler)
+		server.ChannelHandlers = make(map[string]gliderssh.ChannelHandler, len(gliderssh.DefaultChannelHandlers)+1)
+		for channelType, handler := range gliderssh.DefaultChannelHandlers {
+			server.ChannelHandlers[channelType] = handler
+		}
 	}
-	server.ChannelHandlers["direct-tcpip"] = sipChannelHandler(listener)
+	server.ChannelHandlers["direct-tcpip"] = sipChannelHandler(ctx, sourceFactory, options)
 	return nil
+}
+
+func sipChannelHandler(
+	attachCtx context.Context,
+	sourceFactory SIPSourceFactory,
+	connOptions []sip.ConnOption,
+) gliderssh.ChannelHandler {
+	return func(server *gliderssh.Server, _ *gossh.ServerConn, newChannel gossh.NewChannel, sshCtx gliderssh.Context) {
+		var destination sipForwardChannelData
+		if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
+			_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
+			return
+		}
+		if server.LocalPortForwardingCallback != nil && !server.LocalPortForwardingCallback(sshCtx, destination.DestAddr, destination.DestPort) {
+			_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
+			return
+		}
+
+		serveCtx, cancel := context.WithCancel(sshCtx)
+		stopAttachCancel := context.AfterFunc(attachCtx, cancel)
+		listener := newSIPChannelListener()
+		closeService := func() {
+			stopAttachCancel()
+			cancel()
+			_ = listener.Close()
+		}
+		target := TargetRequest{Username: sshCtx.User(), Host: destination.DestAddr, Port: destination.DestPort}
+		source, err := sourceFactory(serveCtx, target)
+		if err != nil || source == nil {
+			closeService()
+			_ = newChannel.Reject(gossh.Prohibited, "forwarding target rejected")
+			return
+		}
+		if err := serveCtx.Err(); err != nil {
+			closeService()
+			_ = newChannel.Reject(gossh.ConnectionFailed, "SSH connection closed")
+			return
+		}
+		if err := sip.Serve(serveCtx, listener, source, connOptions...); err != nil {
+			closeService()
+			_ = newChannel.Reject(gossh.ConnectionFailed, "S/IP service unavailable")
+			return
+		}
+
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			closeService()
+			return
+		}
+		go gossh.DiscardRequests(requests)
+
+		serveConn, bridgeConn := net.Pipe()
+		if err := listener.deliver(serveConn); err != nil {
+			_ = serveConn.Close()
+			_ = bridgeConn.Close()
+			_ = channel.Close()
+			closeService()
+			return
+		}
+		bridgeSSHChannel(channel, bridgeConn, closeService)
+	}
 }
 
 type sipChannelListener struct {
@@ -242,41 +204,13 @@ type sipForwardChannelData struct {
 	OriginPort uint32
 }
 
-func sipChannelHandler(listener *sipChannelListener) gliderssh.ChannelHandler {
-	return func(server *gliderssh.Server, _ *gossh.ServerConn, newChannel gossh.NewChannel, ctx gliderssh.Context) {
-		var destination sipForwardChannelData
-		if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
-			_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
-			return
-		}
-		if server.LocalPortForwardingCallback == nil || !server.LocalPortForwardingCallback(ctx, destination.DestAddr, destination.DestPort) {
-			_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
-			return
-		}
-
-		channel, requests, err := newChannel.Accept()
-		if err != nil {
-			return
-		}
-		go gossh.DiscardRequests(requests)
-
-		serveConn, bridgeConn := net.Pipe()
-		if err := listener.deliver(serveConn); err != nil {
-			_ = serveConn.Close()
-			_ = bridgeConn.Close()
-			_ = channel.Close()
-			return
-		}
-		bridgeSSHChannel(channel, bridgeConn)
-	}
-}
-
-func bridgeSSHChannel(channel gossh.Channel, conn net.Conn) {
+func bridgeSSHChannel(channel gossh.Channel, conn net.Conn, onClose func()) {
 	var closeOnce sync.Once
 	closeBoth := func() {
 		closeOnce.Do(func() {
 			_ = channel.Close()
 			_ = conn.Close()
+			onClose()
 		})
 	}
 	go func() {
@@ -289,6 +223,6 @@ func bridgeSSHChannel(channel gossh.Channel, conn net.Conn) {
 	}()
 }
 
-func invalidSIPMuxInstall(message string) error {
+func invalidSIPSourceInstall(message string) error {
 	return errorx.EnsureStackTrace(fmt.Errorf("%w: %s", ErrInvalidSIPMuxInstall, message))
 }

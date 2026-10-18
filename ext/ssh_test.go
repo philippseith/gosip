@@ -83,25 +83,30 @@ func TestGliderlabsSSHServerForwardsAuthenticatedAllowedTCPApplications(t *testi
 	require.Error(t, err, "unlisted public key must not authenticate")
 }
 
-func TestInstallSIPMuxRequiresSSHOptions(t *testing.T) {
-	err := ext.InstallSIPMux(context.Background(), &gliderssh.Server{}, &countingSIPSource{}, nil)
+func TestAttachSIPSourceRequiresAuthentication(t *testing.T) {
+	factory := func(context.Context, ext.TargetRequest) (sip.SyncClient, error) {
+		return &countingSIPSource{}, nil
+	}
+	err := ext.AttachSIPSource(context.Background(), &gliderssh.Server{}, factory, nil)
 	require.ErrorIs(t, err, ext.ErrInvalidSIPMuxInstall)
 }
 
-func TestInstallSIPMuxAppliesConnOptions(t *testing.T) {
-	server := &gliderssh.Server{}
-	err := ext.InstallSIPMux(
-		context.Background(),
-		server,
-		sip.NewMux(&countingSIPSource{}),
-		[]sip.ConnOption{sip.WithBusyTimeout(0)},
-		ext.WithHostSigner(generateSigner(t)),
-		ext.WithLoginCallback(func(context.Context, ext.LoginInput) bool { return false }),
-		ext.WithTargetCallback(func(context.Context, ext.TargetRequest) bool { return false }),
-	)
-	require.Error(t, err)
-	require.Empty(t, server.HostSigners, "invalid Serve options must not mutate the SSH server")
-	require.Nil(t, server.ChannelHandlers)
+func TestAttachSIPSourceAppliesConnOptions(t *testing.T) {
+	hostSigner := generateSigner(t)
+	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.User() == "operator" && password == "secret"
+		},
+	}
+	factory := func(context.Context, ext.TargetRequest) (sip.SyncClient, error) {
+		return &countingSIPSource{}, nil
+	}
+	require.NoError(t, ext.AttachSIPSource(context.Background(), server, factory, []sip.ConnOption{sip.WithBusyTimeout(0)}))
+	sshAddress := startSSHServer(t, server)
+	client := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
+	_, err := client.Dial("tcp", "127.0.0.1:35021")
+	require.Error(t, err, "invalid Serve options must reject the channel")
 }
 
 func startEchoTarget(t *testing.T) string {
@@ -193,7 +198,12 @@ func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	const sipTarget = "127.0.0.1:35021"
 	source := &countingSIPSource{}
 	hostSigner := generateSigner(t)
+	sharedMux := sip.NewMux(source)
 	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.User() == "operator" && password == "secret"
+		},
 		ChannelHandlers: map[string]gliderssh.ChannelHandler{
 			"session": func(_ *gliderssh.Server, _ *cryptossh.ServerConn, newChannel cryptossh.NewChannel, _ gliderssh.Context) {
 				channel, requests, err := newChannel.Accept()
@@ -208,26 +218,23 @@ func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	err := ext.InstallSIPMux(
-		ctx,
-		server,
-		sip.NewMux(source),
-		[]sip.ConnOption{sip.WithBusyTimeout(3000), sip.WithMaxConnections(8)},
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(func(_ context.Context, login ext.LoginInput) bool {
-			return login.Method == ext.LoginPassword && login.Username == "operator" && login.Password == "secret"
-		}),
-		ext.WithTargetCallback(func(_ context.Context, target ext.TargetRequest) bool {
-			return target.Username == "operator" && target.Host == "127.0.0.1" && target.Port == 35021
-		}),
-	)
+	factory := ext.SIPSourceFactory(func(ctx context.Context, target ext.TargetRequest) (sip.SyncClient, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if target.Username != "operator" || target.Host != "127.0.0.1" || target.Port != 35021 {
+			return nil, errors.New("forwarding target is not allowed")
+		}
+		return sharedMux, nil
+	})
+	err := ext.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)})
 	require.NoError(t, err)
 	sshAddress := startSSHServer(t, server)
 
 	sshClientA := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
 	sshClientB := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
 	_, err = sshClientA.Dial("tcp", "127.0.0.1:35022")
-	require.Error(t, err, "target callback must reject unauthorized destinations")
+	require.Error(t, err, "source factory must reject unauthorized destinations")
 	sipClientA := newSIPClientOverSSH(t, sshClientA, sipTarget)
 	sipClientB := newSIPClientOverSSH(t, sshClientB, sipTarget)
 	sessionChannel, sessionRequests, err := sshClientA.OpenChannel("session", nil)

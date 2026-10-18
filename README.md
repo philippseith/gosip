@@ -77,15 +77,16 @@ Responses advertising larger values are rejected with an error.
 
 ## SSH server integration
 
-`ext.InstallSIPMux` installs a S/IP channel bridge into a caller-owned `gliderlabs/ssh` server. It passes a `net.Listener` implementation to `sip.Serve`; each authorized SSH `direct-tcpip` channel becomes an accepted S/IP connection. The bridge does not bind a TCP port or dial the requested destination. The host and port are logical forwarding values checked by the target callback.
+`ext.AttachSIPSource` adds a S/IP bridge to a caller-owned `gliderlabs/ssh` server. It installs a `net.Listener` that accepts streams from SSH `direct-tcpip` channels and calls `sip.Serve` for each channel. No TCP listener or destination dial is created.
 
-Pass the S/IP mux, a slice of `sip.ConnOption`, and SSH options for the host signer, login callback, and target callback. The caller retains ownership of `gliderssh.Server` and starts it with `server.Serve`. The supplied context controls the S/IP `Serve` loop.
+The caller configures host keys and authentication directly on `gliderssh.Server`. `AttachSIPSource` receives a factory and a slice of `sip.ConnOption`. The factory runs once per `direct-tcpip` channel and returns the `sip.SyncClient` for that channel; it may return a source or a mux such as `sip.NewMux(source)`. Return an error to reject a target. The optional server `LocalPortForwardingCallback` is also checked before the factory.
 
 ```go
 package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 
@@ -104,22 +105,23 @@ func serveSSH(ctx context.Context, source sip.SyncClient) error {
 	if err != nil {
 		return err
 	}
-	server := &gliderssh.Server{}
-	if err := ext.InstallSIPMux(
-		ctx,
-		server,
-		sip.NewMux(source),
-		[]sip.ConnOption{sip.WithMaxConnections(32)},
-		ext.WithHostSigner(hostSigner),
-		ext.WithLoginCallback(func(ctx context.Context, login ext.LoginInput) bool {
-			return ctx.Err() == nil && login.Method == ext.LoginPassword &&
-				login.Username == "operator" && login.Password == os.Getenv("SSH_PASSWORD")
-		}),
-		ext.WithTargetCallback(func(ctx context.Context, target ext.TargetRequest) bool {
-			return ctx.Err() == nil && target.Username == "operator" &&
-				target.Host == "127.0.0.1" && target.Port == 35021
-		}),
-	); err != nil {
+	server := &gliderssh.Server{
+		HostSigners: []gliderssh.Signer{hostSigner},
+		PasswordHandler: func(ctx gliderssh.Context, password string) bool {
+			return ctx.Err() == nil && ctx.User() == "operator" && password == os.Getenv("SSH_PASSWORD")
+		},
+	}
+	mux := sip.NewMux(source)
+	factory := func(ctx context.Context, target ext.TargetRequest) (sip.SyncClient, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if target.Username != "operator" || target.Host != "127.0.0.1" || target.Port != 35021 {
+			return nil, errors.New("forwarding target is not allowed")
+		}
+		return mux, nil
+	}
+	if err := ext.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)}); err != nil {
 		return err
 	}
 	sshListener, err := net.Listen("tcp", "127.0.0.1:2222")
@@ -131,9 +133,9 @@ func serveSSH(ctx context.Context, source sip.SyncClient) error {
 }
 ```
 
-The login callback receives each password or public-key attempt. The target callback authorizes each `direct-tcpip` channel before its stream is delivered to S/IP. Both callback contexts are scoped to the SSH connection, have no per-callback deadline, and must not be retained.
+The factory is called concurrently and should be safe for concurrent use. Its parameter is the standard `context.Context`, derived from the SSH connection and canceled when that connection or the attachment stops. `gliderssh.Context` is the richer context supplied to gliderlabs callbacks: it embeds `context.Context` and adds SSH-specific metadata and synchronization methods. The factory receives the standard interface for decoupling; `TargetRequest` carries the authenticated username and forwarding destination.
 
-The installer reserves `direct-tcpip` for S/IP and rejects a server with an existing handler for that channel type. Other configured channel, request, and subsystem handlers are preserved. To support other applications, add their handlers to the same gliderlabs server; SCP/SFTP needs session or subsystem handlers, and a TFTP service needs a UDP gateway. The example uses a logical target: `ssh -p 2222 -N -L 35021:127.0.0.1:35021 operator@127.0.0.1` forwards each channel directly into `sip.Serve` without requiring a server-side TCP listener on port 35021.
+The installer preserves the server's other channel, request, and subsystem handlers, including gliderlabs' default session handler when no channel map was supplied. It reserves `direct-tcpip`; attaching to a server with an existing handler for that type returns an error. SCP/SFTP can use configured session or subsystem handlers; a TFTP service needs a UDP gateway. The example's `127.0.0.1:35021` is a logical SSH target, not a server-side TCP listener: `ssh -p 2222 -N -L 35021:127.0.0.1:35021 operator@127.0.0.1` sends each channel directly to its factory-selected S/IP service.
 
 
 
