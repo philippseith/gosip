@@ -1,0 +1,153 @@
+<mxfile host="app.diagrams.net" modified="2026-10-21T00:00:00.000Z" agent="omp" version="24.7.17" type="device">
+  <diagram id="sip-first-use-init" name="First-use connection initialization">
+    <mxGraphModel dx="1540" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1540" pageHeight="1560" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="First-use S/IP connection initialization" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="20" width="1450" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="clientLane" value="CLIENT API" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#f5f5f5;swimlaneFillColor=#ffffff;strokeColor=#9e9e9e;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="30" y="85" width="330" height="1440" as="geometry"/>
+        </mxCell>
+        <mxCell id="dialLane" value="CLIENT CONNECTION SETUP" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#fff8e1;swimlaneFillColor=#ffffff;strokeColor=#f9a825;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="385" y="85" width="370" height="1440" as="geometry"/>
+        </mxCell>
+        <mxCell id="loopsLane" value="CONNECTION LOOPS" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#e8f5e9;swimlaneFillColor=#ffffff;strokeColor=#81c784;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="780" y="85" width="430" height="1440" as="geometry"/>
+        </mxCell>
+        <mxCell id="peerLane" value="S/IP SERVER" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#e3f2fd;swimlaneFillColor=#ffffff;strokeColor=#64b5f6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1235" y="85" width="280" height="1440" as="geometry"/>
+        </mxCell>
+        <mxCell id="newClient" value="sip.NewClient(network, address, options...)&#xa;Stores configuration only; client.conn is nil and no network dial happens yet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="145" width="280" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="firstCall" value="First client operation&#xa;e.g. Client.ReadDataState(...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="275" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="parse" value="parseTryConnectDo&#xa;Parse request context/options; call tryConnect before running the operation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="390" width="280" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="tryConnect" value="tryConnect&#xa;Lock mxTryConnect; client.Conn() is nil on first use" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="535" width="280" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="readyClient" value="waitForDialWithBackoff stores the returned Conn in client.conn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="1235" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="originalOperation" value="Resume original do()&#xa;Conn.ReadDataState(...) begins the requested operation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eaf6;strokeColor=#7986cb;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="55" y="1355" width="280" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="backoffDial" value="dialWithBackOff&#xa;Retry Dial failures with configured backoff" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="535" width="300" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="dial" value="Dial → dial&#xa;Resolve ConnOptions; open TCP connection with net.Dialer.DialContext" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="665" width="300" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="newConn" value="newConn&#xa;Initialize reqCh, transaction channels, response map and timeouts; apply ConnOptions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="795" width="300" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="startLoops" value="startLoops&#xa;Launch sendLoop and receiveLoop before the Connect handshake" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="935" width="300" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="connect" value="connect(dialCtx, sendRecvCtx)&#xa;Create ConnectRequest v1 with requested BusyTimeout and LeaseTimeout; wait for response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1078" width="300" height="114" as="geometry"/>
+        </mxCell>
+        <mxCell id="connected" value="ConnectResponse decoded and stored&#xa;Set negotiated timeout; Dial returns connected Conn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1235" width="300" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="sendLoop" value="sendLoop&#xa;ConnectRequest follows the normal send path: sendRequest → reqCh → sendLoop; write Header + PDU, assign transaction ID, register respChans[ID], signal transactionStarted" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="825" y="1060" width="330" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="receiveLoop" value="receiveLoop&#xa;Wait for transactionStarted; read ConnectResponse; match transaction ID; deliver respFunc to connect() to read the PDU body" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1e88e5;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="825" y="1250" width="330" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="peer" value="TCP connection&#xa;S/IP server handles ConnectRequest and replies with ConnectResponse using the same transaction ID" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1e88e5;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="1068" width="230" height="134" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="Concurrent first calls are serialized by mxTryConnect. A later call reuses the Conn while connected and within LeaseTimeout; otherwise tryConnect reconnects." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#fbc02d;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="825" y="1410" width="330" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="configured client" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#616161;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="newClient" target="firstCall">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="1. first-use call" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#616161;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="firstCall" target="parse">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="2. ensure connection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#616161;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="parse" target="tryConnect">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="3. dial" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tryConnect" target="backoffDial">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ew" value="waiting for dial result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#7986cb;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="tryConnect" target="readyClient">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="attempt Dial" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="backoffDial" target="dial">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="TCP connect" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dial" target="peer">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1375" y="712.5"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="net.Conn" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="dial" target="newConn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="initialized conn" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="newConn" target="startLoops">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=2;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=0;entryY=0.16666666666666666;entryDx=0;entryDy=0;" edge="1" parent="1" source="startLoops" target="sendLoop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="790" y="949.25"/>
+              <mxPoint x="790" y="1085"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=2;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.2857142857142857;entryDx=0;entryDy=0;" edge="1" parent="1" source="startLoops" target="receiveLoop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="1001.5"/>
+              <mxPoint x="760" y="1290"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="then handshake" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#f9a825;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="startLoops" target="connect">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;jumpStyle=arc;jumpSize=10;" edge="1" parent="1" source="connect" target="sendLoop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" value="ConnectRequest" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="sendLoop" target="peer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="ConnectResponse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#1e88e5;strokeWidth=3;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="peer" target="receiveLoop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1375" y="1320"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="respFunc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#1e88e5;strokeWidth=2;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;" edge="1" parent="1" source="receiveLoop" target="connect">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="740" y="1355"/>
+              <mxPoint x="740" y="1169.2"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" value="success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="connect" target="connected">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="Conn ready" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#43a047;strokeWidth=3;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="connected" target="readyClient">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="4. continue operation" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;strokeColor=#7986cb;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="readyClient" target="originalOperation">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
