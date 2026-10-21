@@ -1,0 +1,91 @@
+<mxfile host="app.diagrams.net" modified="2026-10-21T00:00:00.000Z" agent="omp" version="24.7.17" type="device">
+  <diagram id="sip-request-response-flow" name="Request response flow">
+    <mxGraphModel dx="1500" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="S/IP request and response flow" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1400" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="clientLane" value="CLIENT CALLER" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#f5f5f5;swimlaneFillColor=#ffffff;strokeColor=#9e9e9e;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="85" width="360" height="850" as="geometry"/>
+        </mxCell>
+        <mxCell id="connectionLane" value="S/IP CONNECTION" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#e8f5e9;swimlaneFillColor=#ffffff;strokeColor=#81c784;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="430" y="85" width="700" height="850" as="geometry"/>
+        </mxCell>
+        <mxCell id="peerLane" value="REMOTE S/IP SERVER" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;fillColor=#e3f2fd;swimlaneFillColor=#ffffff;strokeColor=#64b5f6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="85" width="300" height="850" as="geometry"/>
+        </mxCell>
+        <mxCell id="clientApi" value="sip.Client.ReadDataState(...)&#xa;Application invokes the synchronous client API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="145" width="300" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="retry" value="parseTryConnectDo&#xa;Parse request options; ensure or reconnect the Conn; call Conn.ReadDataState(ctx, ...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="70" y="270" width="300" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="connMethod" value="conn.ReadDataState&#xa;Build request and response PDUs; call sendRequestWaitForResponseAndRead" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="70" y="425" width="300" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="waiter" value="Caller waits on req.ch&#xa;When receiveLoop delivers respFunc, execute respFunc(resp) to read and validate the PDU body" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eaf6;strokeColor=#7986cb;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="70" y="655" width="300" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="result" value="Return response or error to the application" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#616161;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="70" y="830" width="300" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="queue" value="sendRequest → enqueueRequest(ctx, req)&#xa;Request enters reqCh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="465" y="155" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="sendLoop" value="sendLoop&#xa;dequeueRequest → wait for transactionAllowed → send(req)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="780" y="145" width="310" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="sendWrite" value="send(req)&#xa;Write Header + PDU; allocate transaction ID; register respChans[ID] = req.ch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="780" y="285" width="310" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="receiveLoop" value="receiveLoop&#xa;wait for transactionStarted → receiveAndDispatch → readNextResponse&#xa;Match transaction ID, send respFunc to req.ch, wait for body read to finish, then signal transactionAllowed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1e88e5;fontSize=14;spacing=9;" vertex="1" parent="1">
+          <mxGeometry x="780" y="600" width="310" height="175" as="geometry"/>
+        </mxCell>
+        <mxCell id="peer" value="S/IP server&#xa;Processes request and sends its response with the matching transaction ID" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1e88e5;fontSize=15;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="320" width="240" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="sendLoop and receiveLoop run concurrently after Dial; Connect uses the same request/response path." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#fbc02d;fontSize=13;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="465" y="825" width="625" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="request1" value="1. ReadDataState call" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#616161;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="clientApi" target="retry">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="request2" value="2. invoke Conn method" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#616161;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="retry" target="connMethod">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="enqueue" value="3. enqueue request" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#43a047;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="connMethod" target="queue">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wait" value="4. wait for req.ch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#7986cb;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="connMethod" target="waiter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="dequeue" value="dequeueRequest()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#43a047;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="queue" target="sendLoop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="sendAction" value="send(req)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#43a047;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="sendLoop" target="sendWrite">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wireRequest" value="5. S/IP request: Header + PDU + transaction ID" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#43a047;strokeWidth=3;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="sendWrite" target="peer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="startReceive" value="signal(transactionStarted)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#757575;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="sendWrite" target="receiveLoop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="wireResponse" value="6. matching S/IP response" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1e88e5;strokeWidth=3;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="peer" target="receiveLoop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="dispatch" value="7. respFunc via transaction-ID mapping" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1e88e5;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="receiveLoop" target="waiter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="allowNext" value="signal(transactionAllowed)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#757575;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="receiveLoop" target="sendLoop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="returnResult" value="8. response body parsed" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1e88e5;strokeWidth=2;endArrow=block;endFill=1;labelBackgroundColor=#ffffff;fontSize=12;" edge="1" parent="1" source="waiter" target="result">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
