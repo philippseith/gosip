@@ -10,6 +10,7 @@ go vet ./...
 golangci-lint run ./...   # skips *_test.go files (run: tests: false in .golangci.yaml)
 gofmt -w .
 go mod tidy
+govulncheck ./...
 ```
 
 Run tests — **read the test prerequisites below first**:
