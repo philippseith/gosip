@@ -1,5 +1,5 @@
 // Package ext provides optional integrations for gosip.
-package ext
+package ssh
 
 import (
 	"context"

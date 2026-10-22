@@ -1,4 +1,4 @@
-package ext_test
+package ssh_test
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 	"time"
 
 	gliderssh "github.com/gliderlabs/ssh"
-	"github.com/philippseith/gosip/ext"
 	"github.com/philippseith/gosip/sip"
+	"github.com/philippseith/gosip/ssh"
 	"github.com/stretchr/testify/require"
 	cryptossh "golang.org/x/crypto/ssh"
 )
@@ -90,13 +90,13 @@ func TestAttachSIPSourceAllowsUnauthenticatedServer(t *testing.T) {
 	server := &gliderssh.Server{HostSigners: []gliderssh.Signer{hostSigner}}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	factory := ext.SIPSourceFactory(func(_ context.Context, request ext.TargetRequest) (sip.SyncClient, error) {
+	factory := ssh.SIPSourceFactory(func(_ context.Context, request ssh.TargetRequest) (sip.SyncClient, error) {
 		if request.Host != "127.0.0.1" || request.Port != 35021 {
 			return nil, errors.New("target is not allowed")
 		}
 		return sip.NewMux(source), nil
 	})
-	require.NoError(t, ext.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)}))
+	require.NoError(t, ssh.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)}))
 	sshAddress := startSSHServer(t, server)
 	sshClient := dialSSH(t, sshAddress, "guest", nil, hostSigner.PublicKey())
 	sipClient := newSIPClientOverSSH(t, sshClient, target)
@@ -114,10 +114,10 @@ func TestAttachSIPSourceAppliesConnOptions(t *testing.T) {
 			return ctx.User() == "operator" && password == "secret"
 		},
 	}
-	factory := func(context.Context, ext.TargetRequest) (sip.SyncClient, error) {
+	factory := func(context.Context, ssh.TargetRequest) (sip.SyncClient, error) {
 		return &countingSIPSource{}, nil
 	}
-	require.NoError(t, ext.AttachSIPSource(context.Background(), server, factory, []sip.ConnOption{sip.WithBusyTimeout(0)}))
+	require.NoError(t, ssh.AttachSIPSource(context.Background(), server, factory, []sip.ConnOption{sip.WithBusyTimeout(0)}))
 	sshAddress := startSSHServer(t, server)
 	client := dialSSH(t, sshAddress, "operator", []cryptossh.AuthMethod{cryptossh.Password("secret")}, hostSigner.PublicKey())
 	_, err := client.Dial("tcp", "127.0.0.1:35021")
@@ -233,7 +233,7 @@ func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	factory := ext.SIPSourceFactory(func(ctx context.Context, target ext.TargetRequest) (sip.SyncClient, error) {
+	factory := ssh.SIPSourceFactory(func(ctx context.Context, target ssh.TargetRequest) (sip.SyncClient, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -242,7 +242,7 @@ func TestConcurrentSIPClientsReachOneMuxOverSSH(t *testing.T) {
 		}
 		return sharedMux, nil
 	})
-	err := ext.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)})
+	err := ssh.AttachSIPSource(ctx, server, factory, []sip.ConnOption{sip.WithBusyTimeout(3000)})
 	require.NoError(t, err)
 	sshAddress := startSSHServer(t, server)
 
