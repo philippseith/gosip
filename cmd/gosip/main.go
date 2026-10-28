@@ -249,7 +249,7 @@ func doReadEverything(client sip.Client, args []string, options []sip.RequestOpt
 	fmt.Printf("Min:           %s\n", hex.EncodeToString(resp.Min[:]))
 	fmt.Printf("Max:           %s\n", hex.EncodeToString(resp.Max[:]))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
-	printData(resp.Data)
+	printData(resp.Data, sercos.Attribute(resp.Attribute))
 	return nil
 }
 
@@ -264,7 +264,7 @@ func doReadOnlyData(client sip.Client, args []string, options []sip.RequestOptio
 	}
 	fmt.Printf("IDN:       %s\n", sercos.Idn(t.idn))
 	fmt.Printf("Attribute: 0x%08x\n", resp.Attribute)
-	printData(resp.Data)
+	printData(resp.Data, sercos.Attribute(resp.Attribute))
 	return nil
 }
 
@@ -605,16 +605,10 @@ func validElements(ve uint16) string {
 	return strings.Join(set, "|")
 }
 
-func printData(data []byte) {
+func printData(data []byte, attribute sercos.Attribute) {
 	fmt.Printf("DataLength:    %d\n", len(data))
 	if len(data) == 0 {
 		return
 	}
-	fmt.Printf("Data (hex):    %s\n", hex.EncodeToString(data))
-	fmt.Printf("Data (text):   %s\n", strings.Map(func(r rune) rune {
-		if r < 0x20 || r > 0x7e {
-			return '.'
-		}
-		return r
-	}, string(data)))
+	fmt.Printf("Data (formatted): %s\n", strings.Join(sercos.Data(data).Strings(attribute), ", "))
 }
