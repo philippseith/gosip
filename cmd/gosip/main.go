@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/philippseith/gosip/sercos"
 	"github.com/philippseith/gosip/sip"
 	"github.com/spf13/pflag"
 )
@@ -239,7 +240,7 @@ func doReadEverything(client sip.Client, args []string, options []sip.RequestOpt
 	if err != nil {
 		return err
 	}
-	fmt.Printf("IDN:           %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:           %s\n", sercos.Idn(t.idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
 	fmt.Printf("DataState:     0x%04x\n", resp.DataState)
 	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
@@ -261,7 +262,7 @@ func doReadOnlyData(client sip.Client, args []string, options []sip.RequestOptio
 	if err != nil {
 		return err
 	}
-	fmt.Printf("IDN:       %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:       %s\n", sercos.Idn(t.idn))
 	fmt.Printf("Attribute: 0x%08x\n", resp.Attribute)
 	printData(resp.Data)
 	return nil
@@ -276,7 +277,7 @@ func doReadDescription(client sip.Client, args []string, options []sip.RequestOp
 	if err != nil {
 		return err
 	}
-	fmt.Printf("IDN:           %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:           %s\n", sercos.Idn(t.idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
 	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
 	fmt.Printf("Name:          %s\n", string(resp.Name))
@@ -296,7 +297,7 @@ func doReadDataState(client sip.Client, args []string, options []sip.RequestOpti
 	if err != nil {
 		return err
 	}
-	fmt.Printf("IDN:       %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:       %s\n", sercos.Idn(t.idn))
 	fmt.Printf("DataState: 0x%04x\n", resp.DataState)
 	return nil
 }
@@ -320,7 +321,7 @@ func doWriteData(client sip.Client, args []string, options []sip.RequestOption) 
 	if err := client.WriteData(t.slaveIndex, t.slaveExtension, t.idn, data, options...); err != nil {
 		return err
 	}
-	fmt.Printf("wrote %d bytes to %s\n", len(data), sip.Idn(t.idn))
+	fmt.Printf("wrote %d bytes to %s\n", len(data), sercos.Idn(t.idn))
 	return nil
 }
 
