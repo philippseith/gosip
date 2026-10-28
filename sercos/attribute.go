@@ -40,7 +40,7 @@ func (a Attribute) IsList() bool {
 type AttributeOption func(*Attribute)
 
 func NewAttribute(optione ...AttributeOption) Attribute {
-	a := Attribute(0)
+	a := Attribute(1)
 	for _, option := range optione {
 		option(&a)
 	}
