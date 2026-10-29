@@ -64,6 +64,28 @@ gosip setip --interface eth0 --node 00:11:22:33:44:55 --ip 192.168.1.100 --gatew
 
 The `--interface` flag selects the local NIC used for the broadcast, and `--node` is the device node identifier to target.
 
+## Parsing formatted Sercos data
+
+`sercos.ParseData(attr, s)` reverses `Data.String(attr)`. `sercos.ParseDatas(attr, ss)` parses the elements returned by `Data.Strings(attr)` and concatenates their bytes. `sercos.Data` also implements `fmt.Scanner` for `b`, `u`, `d`, `x`, `X`, `s`, `i`, `f`, and `t`.
+
+```go
+func parseAndScan() error {
+	attr := sercos.Attribute(0x03110001)
+	data, err := sercos.ParseData(attr, "1.000")
+	if err != nil {
+		return err
+	}
+	var scanned sercos.Data
+	if _, err = fmt.Sscanf("0b0000.0000.0000.0010", "%b", &scanned); err != nil {
+		return err
+	}
+	fmt.Printf("parsed=%v scanned=%v\n", []byte(data), []byte(scanned))
+	return nil
+}
+```
+
+For `b`, `u`, `d`, `x`, `X`, `i`, and `f`, scanning reuses an existing `Data` length of 1, 2, 4, or 8 bytes; use an empty `Data` to infer the length from the token. `s` and `t` ignore the current length. `fmt` width keeps its standard meaning as a maximum input-rune count, not a byte length.
+
 ## Protocol limits
 
 Per the Sercos IDN parameter model, this implementation enforces a maximum of 65535 (0xFFFF) bytes
