@@ -528,7 +528,7 @@ func forEachIDN(client sip.Client, options []sip.RequestOption, fn func(idn uint
 			return errQuitInteractive
 		}
 		if isHelpLine(line) {
-			printPromptHelp(os.Stdout)
+			printPromptHelp(os.Stdout, false)
 			return nil
 		}
 		if isStatusLine(line) {
@@ -626,6 +626,69 @@ func parseWriteLine(line string) (wl writeLine, isWrite bool, err error) {
 	return wl, true, nil
 }
 
+func parseBrowseLine(line string) (interfaceName string, isBrowse bool, err error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 || (!strings.EqualFold(fields[0], "b") && !strings.EqualFold(fields[0], "browse")) {
+		return "", false, nil
+	}
+	if len(fields) > 2 {
+		return "", true, errors.New("expected b [interface]")
+	}
+	if len(fields) == 2 {
+		return fields[1], true, nil
+	}
+	return "", true, nil
+}
+
+func chooseInterface(ctx context.Context, lr *lineReader, out io.Writer, names []string) (string, bool, error) {
+	if len(names) == 0 {
+		return "", false, errors.New("no network interface with an IPv4 address is up")
+	}
+	for i, name := range names {
+		fmt.Fprintf(out, "%d) %s\n", i+1, name)
+	}
+	saved := lr.history
+	lr.history = nil
+	defer func() { lr.history = saved }()
+	line, st := lr.ReadLine(ctx, "interface> ")
+	if st != lineOK {
+		return "", false, nil
+	}
+	selection := strings.TrimSpace(line)
+	if selection == "" {
+		return "", false, nil
+	}
+	if number, err := strconv.Atoi(selection); err == nil && number >= 1 && number <= len(names) {
+		return names[number-1], true, nil
+	}
+	for _, name := range names {
+		if selection == name {
+			return name, true, nil
+		}
+	}
+	return "", false, fmt.Errorf("invalid interface selection %q", selection)
+}
+
+func promptBrowse(ctx context.Context, lr *lineReader, out io.Writer, interfaceName string) error {
+	if interfaceName == "" {
+		names, err := availableInterfaces()
+		if err != nil {
+			return err
+		}
+		var ok bool
+		interfaceName, ok, err = chooseInterface(ctx, lr, out, names)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+	}
+	browseCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	return browseInterface(browseCtx, interfaceName)
+}
+
 // isStatusLine reports whether the line asks for the status ("s" or "status", case-insensitive).
 func isStatusLine(line string) bool {
 	return strings.EqualFold(line, "s") || strings.EqualFold(line, "status")
@@ -642,7 +705,7 @@ func isQuitLine(line string) bool {
 }
 
 // printPromptHelp writes the command and control help used by both interactive prompts.
-func printPromptHelp(out io.Writer) {
+func printPromptHelp(out io.Writer, browse bool) {
 	fmt.Fprintln(out, `Enter: [command] IDN, e.g. ro S-0-0032.0.0. Without command, re is used.`)
 	for _, rc := range readCommands {
 		short := rc.short
@@ -653,6 +716,9 @@ func printPromptHelp(out io.Writer) {
 	}
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "w", "write", "write formatted data: w IDN value [value...]")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "wr", "write raw", "write raw hex bytes: wr IDN 0a1b2c3d")
+	if browse {
+		fmt.Fprintf(out, "  %-6s %-16s %s\n", "b", "browse", "list devices answering a UDP Browse: b [interface]; without interface, choose one")
+	}
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "s", "status", "show the negotiated BusyTimeout and LeaseTimeout")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "h, ?", "help", "show this help")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "q", "quit", "quit the prompt")
@@ -694,18 +760,25 @@ func runPrompt(client sip.Client, options []sip.RequestOption) error {
 	defer stop()
 	reqOptions := append(slices.Clone(options), sip.WithContext(ctx))
 	rep := newTimeoutReporter(client, os.Stdout)
-	printPromptHelp(os.Stdout)
-	readLines(ctx, newStdinLineReader(), "gosip> ", os.Stderr, func(line string) error {
+	printPromptHelp(os.Stdout, true)
+	lr := newStdinLineReader()
+	readLines(ctx, lr, "gosip> ", os.Stderr, func(line string) error {
 		if isQuitLine(line) {
 			return errQuitInteractive
 		}
 		if isHelpLine(line) {
-			printPromptHelp(os.Stdout)
+			printPromptHelp(os.Stdout, true)
 			return nil
 		}
 		if isStatusLine(line) {
 			rep.print()
 			return nil
+		}
+		if name, isBrowse, err := parseBrowseLine(line); isBrowse {
+			if err != nil {
+				return err
+			}
+			return promptBrowse(ctx, lr, os.Stdout, name)
 		}
 		if wl, isWrite, err := parseWriteLine(line); isWrite {
 			if err != nil {

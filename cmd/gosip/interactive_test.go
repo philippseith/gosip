@@ -346,11 +346,95 @@ func TestIsQuitLine(t *testing.T) {
 
 func TestPrintPromptHelp(t *testing.T) {
 	var out bytes.Buffer
-	printPromptHelp(&out)
-	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "w IDN", "wr IDN", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
+	printPromptHelp(&out, true)
+	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "w IDN", "wr IDN", "b [interface]", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
 		if !strings.Contains(out.String(), text) {
 			t.Errorf("help output missing %q: %s", text, out.String())
 		}
+	}
+	var idnOut bytes.Buffer
+	printPromptHelp(&idnOut, false)
+	if strings.Contains(idnOut.String(), "browse") {
+		t.Errorf("IDN help unexpectedly contains browse command: %s", idnOut.String())
+	}
+}
+
+func TestParseBrowseLine(t *testing.T) {
+	tests := []struct {
+		line       string
+		wantName   string
+		wantBrowse bool
+		wantErr    string
+	}{
+		{line: "b", wantBrowse: true},
+		{line: "B eth0", wantName: "eth0", wantBrowse: true},
+		{line: "browse eth0", wantName: "eth0", wantBrowse: true},
+		{line: "b a c", wantBrowse: true, wantErr: "expected b [interface]"},
+		{line: "ro 32"},
+		{line: "bogus"},
+		{line: "4106"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			name, isBrowse, err := parseBrowseLine(tt.line)
+			if isBrowse != tt.wantBrowse || name != tt.wantName {
+				t.Fatalf("parseBrowseLine(%q) = (%q, %t), want (%q, %t)", tt.line, name, isBrowse, tt.wantName, tt.wantBrowse)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("parseBrowseLine(%q) error = %v", tt.line, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("parseBrowseLine(%q) error = %v, want substring %q", tt.line, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestChooseInterface(t *testing.T) {
+	names := []string{"eth0", "lo"}
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantOK  bool
+		wantErr string
+	}{
+		{name: "numeric selection", input: "2\n", want: "lo", wantOK: true},
+		{name: "name selection", input: "eth0\n", want: "eth0", wantOK: true},
+		{name: "blank selection cancels", input: "\n"},
+		{name: "out of range", input: "9\n", wantErr: "invalid interface selection"},
+		{name: "unknown name", input: "wlan0\n", wantErr: "invalid interface selection"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			got, ok, err := chooseInterface(context.Background(), newTestReader(tt.input), &out, names)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("chooseInterface error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want || ok != tt.wantOK {
+				t.Fatalf("chooseInterface = (%q, %t, %v), want (%q, %t, nil)", got, ok, err, tt.want, tt.wantOK)
+			}
+			if !strings.Contains(out.String(), "1) eth0") || !strings.Contains(out.String(), "2) lo") {
+				t.Errorf("options not printed: %q", out.String())
+			}
+		})
+	}
+
+	lr := newTestReader("1\n")
+	lr.history = []string{"previous"}
+	if _, ok, err := chooseInterface(context.Background(), lr, io.Discard, names); err != nil || !ok {
+		t.Fatalf("history selection = (ok=%t, err=%v)", ok, err)
+	}
+	if len(lr.history) != 1 || lr.history[0] != "previous" {
+		t.Errorf("history after selection = %v, want [previous]", lr.history)
+	}
+	if _, _, err := chooseInterface(context.Background(), newTestReader(""), io.Discard, nil); err == nil || !strings.Contains(err.Error(), "no network interface") {
+		t.Errorf("empty interface list error = %v, want no-network-interface error", err)
 	}
 }
 

@@ -28,7 +28,7 @@
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
 // "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. The editor supports
 // in-memory Up/Down history, cursor keys and bracketed paste; "s" shows timeouts, "h" shows help,
-// and "q"/"quit", Esc or Ctrl-D quits.
+// "b [interface]" browses devices (choosing an interface if omitted), and "q"/"quit", Esc or Ctrl-D quits.
 package main
 
 import (
@@ -218,6 +218,7 @@ commands:
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
 The mcp command requires an address in every device tool request and rejects --address.
+The interactive prompt accepts "b [interface]" to browse devices; omit the interface to choose from the available IPv4 interfaces.
 
 
 Run "gosip <command> -h" for the flags of a command.
@@ -456,7 +457,10 @@ func doBrowse(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), listen)
 	defer cancel()
+	return browseInterface(ctx, interfaceName)
+}
 
+func browseInterface(ctx context.Context, interfaceName string) error {
 	results, err := sip.Browse(ctx, interfaceName)
 	if err != nil {
 		return err
