@@ -94,6 +94,92 @@ func TestReadLineEditing(t *testing.T) {
 	}
 }
 
+func TestReadLineHistory(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		at    int
+		want  string
+	}{
+		{"recall older entry", "ro 7\rw 1 2\r\x1b[A\x1b[A\r", 2, "ro 7"},
+		{"down moves forward", "a\rb\r\x1b[A\x1b[A\x1b[B\r", 2, "b"},
+		{"down restores draft", "z\rxy\x1b[A\x1b[B\r", 1, "xy"},
+		{"duplicate suppression", "a\rb\rb\r\x1b[A\x1b[A\r", 3, "a"},
+		{"blank lines are omitted", "a\r\r\x1b[A\r", 2, "a"},
+		{"SS3 arrows", "a\r\x1bOA\r", 1, "a"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lr := newTestReader(tc.input)
+			for i := range tc.at + 1 {
+				line, status := lr.ReadLine(context.Background(), "")
+				if status != lineOK {
+					t.Fatalf("ReadLine %d status = %v, want lineOK", i, status)
+				}
+				if i == tc.at && line != tc.want {
+					t.Fatalf("ReadLine %d = %q, want %q", i, line, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestReadLineCursorEditing(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"abc\x1b[D\x1b[Dx\r", "axbc"},
+		{"abc\x1b[Hx\r", "xabc"},
+		{"abc\x1b[H\x1b[3~\r", "bc"},
+		{"abc\x1b[D\x7f\r", "ac"},
+		{"abc\x01x\x05y\r", "xabcy"},
+		{"abc\x1b[1;5Dx\r", "abxc"},
+	}
+	for _, tc := range tests {
+		line, status := newTestReader(tc.input).ReadLine(context.Background(), "")
+		if status != lineOK || line != tc.want {
+			t.Errorf("input %q: got (%q, %v), want (%q, lineOK)", tc.input, line, status, tc.want)
+		}
+	}
+}
+
+func TestReadLinePaste(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"\x1b[200~ro\nS-0-0001\x1b[201~\r", "ro S-0-0001"},
+		{"a\x1b[200~b\r\nc\td\x1b[201~e\r", "ab c de"},
+		{"ac\x1b[D\x1b[200~b\x1b[201~\r", "abc"},
+		{"\x1b[200~a\xc3\xa9b\x1b[201~\r", "ab"},
+	}
+	for _, tc := range tests {
+		line, status := newTestReader(tc.input).ReadLine(context.Background(), "")
+		if status != lineOK || line != tc.want {
+			t.Errorf("input %q: got (%q, %v), want (%q, lineOK)", tc.input, line, status, tc.want)
+		}
+	}
+}
+
+func TestReadLineTerminalOutput(t *testing.T) {
+	var out bytes.Buffer
+	lr := newLineReader(strings.NewReader("ro 7\r\x1b[A\r"), &out, func() (func(), error) {
+		return func() {}, nil
+	})
+	for i := range 2 {
+		if _, status := lr.ReadLine(context.Background(), "gosip> "); status != lineOK {
+			t.Fatalf("ReadLine %d status = %v, want lineOK", i, status)
+		}
+	}
+	got := out.String()
+	for _, want := range []string{"gosip> \x1b[?2004h", "\r\x1b[Kgosip> ro 7", "\x1b[?2004l"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("terminal output %q does not contain %q", got, want)
+		}
+	}
+}
+
 func TestReadIDNsStopsOnContextCancel(t *testing.T) {
 	pr, pw := io.Pipe()
 	defer pw.Close()

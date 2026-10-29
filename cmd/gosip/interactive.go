@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -21,9 +22,27 @@ const (
 	escapeTimeout = 50 * time.Millisecond // how long after ESC to wait for the rest of an escape sequence
 )
 
+const maxHistory = 500
+
 var (
 	errNoInput         = errors.New("no input")
 	errQuitInteractive = errors.New("quit interactive input")
+)
+
+type key int
+
+const (
+	keyEscape key = iota
+	keyIgnored
+	keyUp
+	keyDown
+	keyLeft
+	keyRight
+	keyHome
+	keyEnd
+	keyDelete
+	keyPasteStart
+	keyPasteEnd
 )
 
 type lineStatus int
@@ -90,6 +109,7 @@ type lineReader struct {
 	out     io.Writer
 	makeRaw func() (restore func(), err error)
 	escWait time.Duration
+	history []string
 }
 
 func newLineReader(in io.Reader, out io.Writer, makeRaw func() (func(), error)) *lineReader {
@@ -116,82 +136,357 @@ func (r *lineReader) echo(s string) {
 	}
 }
 
+type lineEditState struct {
+	line    []byte
+	pos     int
+	histIdx int
+	draft   string
+}
+
 // ReadLine prints prompt (terminal only) and returns the entered line.
-// Keys: Enter ('\r' or '\n') accepts; Backspace (0x7f/0x08) deletes the last char; Ctrl-U clears the line;
-// Ctrl-D on an empty line and Ctrl-C (raw mode delivers it as byte 0x03) return lineEOF;
-// a lone Escape returns ("", lineEscape); escape sequences (arrow keys etc.) are ignored; only
-// printable ASCII (0x20-0x7e) is stored. Output uses "\r\n" because raw mode disables newline translation.
-// At end of input a non-empty partial line is returned as lineOK first; the next call returns lineEOF.
-func (r *lineReader) ReadLine(ctx context.Context, prompt string) (string, lineStatus) { // nolint:cyclop
+// Keys: Enter accepts; Backspace deletes before the cursor; Delete deletes at it; Left/Right/Home/End and
+// Ctrl-B/Ctrl-F/Ctrl-A/Ctrl-E move the cursor; Ctrl-U clears; Up/Down navigate in-memory history;
+// bracketed paste inserts text without submitting; Ctrl-D on an empty line, Ctrl-C or a lone Escape exits.
+// Only printable ASCII is retained. At EOF, a non-empty partial line is returned as lineOK first.
+func (r *lineReader) ReadLine(ctx context.Context, prompt string) (string, lineStatus) {
 	if r.out != nil {
 		fmt.Fprint(r.out, prompt)
 		if r.makeRaw != nil {
-			if restore, err := r.makeRaw(); err == nil { // on error stay in cooked mode: Enter still works, Esc needs Enter
-				defer restore()
+			if restore, err := r.makeRaw(); err == nil {
+				fmt.Fprint(r.out, "\x1b[?2004h")
+				defer func() {
+					fmt.Fprint(r.out, "\x1b[?2004l")
+					restore()
+				}()
 			}
 		}
 	}
-	var line []byte
+	state := lineEditState{histIdx: len(r.history)}
 	for {
 		b, err := r.bytes.next(ctx, 0)
 		if err != nil {
-			if len(line) > 0 && ctx.Err() == nil {
-				return string(line), lineOK
+			if len(state.line) > 0 && ctx.Err() == nil {
+				return string(state.line), lineOK
 			}
 			r.echo("\r\n")
 			return "", lineEOF
 		}
-		switch {
-		case b == '\r' || b == '\n':
-			r.echo("\r\n")
-			return string(line), lineOK
-		case b == 0x03:
-			r.echo("\r\n")
-			return "", lineEOF
-		case b == 0x04:
-			if len(line) == 0 {
-				r.echo("\r\n")
-				return "", lineEOF
-			}
-		case b == 0x7f || b == 0x08:
-			if len(line) > 0 {
-				line = line[:len(line)-1]
-				r.echo("\b \b")
-			}
-		case b == 0x15:
-			r.echo(strings.Repeat("\b \b", len(line)))
-			line = line[:0]
-		case b == 0x1b:
-			if r.consumeEscape(ctx) {
-				r.echo("\r\n")
-				return "", lineEscape
-			}
-		case b >= 0x20 && b < 0x7f:
-			line = append(line, b)
-			r.echo(string(b))
+		if line, status, done := r.processByte(ctx, prompt, b, &state); done {
+			return line, status
 		}
 	}
 }
 
-// consumeEscape runs after an ESC byte. It returns true if ESC stood alone (nothing followed within
-// escWait, or input ended). Otherwise it swallows the escape sequence and returns false.
-func (r *lineReader) consumeEscape(ctx context.Context) bool {
-	b, err := r.bytes.next(ctx, r.escWait)
-	if err != nil {
-		return ctx.Err() == nil
+func (r *lineReader) processByte(ctx context.Context, prompt string, b byte, state *lineEditState) (string, lineStatus, bool) {
+	if line, status, done := r.processTerminator(b, state); done {
+		return line, status, true
 	}
 	switch b {
-	case '[': // CSI: parameter bytes, then one final byte 0x40-0x7e
-		for {
-			c, err := r.bytes.next(ctx, r.escWait)
-			if err != nil || (c >= 0x40 && c <= 0x7e) {
-				return false
-			}
+	case 0x7f, 0x08:
+		r.backspace(prompt, state)
+	case 0x15:
+		state.line = state.line[:0]
+		state.pos = 0
+		r.redraw(prompt, state.line, state.pos)
+	case 0x01, 0x02, 0x05, 0x06:
+		r.moveControl(prompt, b, state)
+	case 0x1b:
+		if r.handleEscape(ctx, prompt, state) {
+			r.echo("\r\n")
+			return "", lineEscape, true
 		}
-	case 'O': // SS3 (F1-F4): one more byte
-		_, _ = r.bytes.next(ctx, r.escWait)
+	default:
+		r.insertCharacter(prompt, b, state)
 	}
-	return false // Alt+key: the byte after ESC is dropped
+	return "", lineOK, false
+}
+
+func (r *lineReader) processTerminator(b byte, state *lineEditState) (string, lineStatus, bool) {
+	switch b {
+	case '\r', '\n':
+		r.recordHistory(state.line)
+		r.echo("\r\n")
+		return string(state.line), lineOK, true
+	case 0x03:
+		r.echo("\r\n")
+		return "", lineEOF, true
+	case 0x04:
+		if len(state.line) == 0 {
+			r.echo("\r\n")
+			return "", lineEOF, true
+		}
+	}
+	return "", lineOK, false
+}
+
+func (r *lineReader) insertCharacter(prompt string, b byte, state *lineEditState) {
+	if b != '\t' && (b < 0x20 || b >= 0x7f) {
+		return
+	}
+	r.insertByte(prompt, b, state)
+}
+
+func (r *lineReader) backspace(prompt string, state *lineEditState) {
+	if state.pos == 0 {
+		return
+	}
+	copy(state.line[state.pos-1:], state.line[state.pos:])
+	state.line = state.line[:len(state.line)-1]
+	state.pos--
+	if state.pos == len(state.line) {
+		r.echo("\b \b")
+	} else {
+		r.redraw(prompt, state.line, state.pos)
+	}
+}
+
+func (r *lineReader) moveControl(prompt string, b byte, state *lineEditState) {
+	switch b {
+	case 0x01:
+		state.pos = 0
+	case 0x02:
+		if state.pos > 0 {
+			state.pos--
+		}
+	case 0x05:
+		state.pos = len(state.line)
+	case 0x06:
+		if state.pos < len(state.line) {
+			state.pos++
+		}
+	}
+	r.redraw(prompt, state.line, state.pos)
+}
+
+func (r *lineReader) insertByte(prompt string, b byte, state *lineEditState) {
+	if b == '\t' {
+		b = ' '
+	}
+	if state.pos == len(state.line) {
+		state.line = append(state.line, b)
+		state.pos++
+		r.echo(string(b))
+		return
+	}
+	state.line = append(state.line, 0)
+	copy(state.line[state.pos+1:], state.line[state.pos:])
+	state.line[state.pos] = b
+	state.pos++
+	r.redraw(prompt, state.line, state.pos)
+}
+
+func (r *lineReader) handleEscape(ctx context.Context, prompt string, state *lineEditState) bool {
+	k := r.readKey(ctx)
+	switch k {
+	case keyEscape:
+		return true
+	case keyUp, keyDown:
+		r.navigateHistory(prompt, k, state)
+	case keyLeft, keyRight, keyHome, keyEnd, keyDelete:
+		r.applyCursorKey(prompt, k, state)
+	case keyPasteStart:
+		r.insertPaste(ctx, prompt, state)
+	}
+	return false
+}
+
+func (r *lineReader) navigateHistory(prompt string, k key, state *lineEditState) {
+	if k == keyUp {
+		if state.histIdx == len(r.history) {
+			state.draft = string(state.line)
+		}
+		if state.histIdx == 0 {
+			return
+		}
+		state.histIdx--
+		state.line = []byte(r.history[state.histIdx])
+	} else {
+		if state.histIdx == len(r.history) {
+			return
+		}
+		state.histIdx++
+		if state.histIdx == len(r.history) {
+			state.line = []byte(state.draft)
+		} else {
+			state.line = []byte(r.history[state.histIdx])
+		}
+	}
+	state.pos = len(state.line)
+	r.redraw(prompt, state.line, state.pos)
+}
+
+func (r *lineReader) applyCursorKey(prompt string, k key, state *lineEditState) {
+	switch k {
+	case keyLeft:
+		if state.pos > 0 {
+			state.pos--
+		}
+	case keyRight:
+		if state.pos < len(state.line) {
+			state.pos++
+		}
+	case keyHome:
+		state.pos = 0
+	case keyEnd:
+		state.pos = len(state.line)
+	case keyDelete:
+		if state.pos < len(state.line) {
+			copy(state.line[state.pos:], state.line[state.pos+1:])
+			state.line = state.line[:len(state.line)-1]
+		} else {
+			return
+		}
+	}
+	r.redraw(prompt, state.line, state.pos)
+}
+
+func (r *lineReader) insertPaste(ctx context.Context, prompt string, state *lineEditState) {
+	pasted := r.readPaste(ctx)
+	if len(pasted) == 0 {
+		return
+	}
+	oldLen := len(state.line)
+	state.line = append(state.line, pasted...)
+	copy(state.line[state.pos+len(pasted):], state.line[state.pos:oldLen])
+	copy(state.line[state.pos:state.pos+len(pasted)], pasted)
+	state.pos += len(pasted)
+	r.redraw(prompt, state.line, state.pos)
+}
+
+func (r *lineReader) redraw(prompt string, line []byte, pos int) {
+	if r.out == nil {
+		return
+	}
+	fmt.Fprint(r.out, "\r\x1b[K", prompt, string(line))
+	if remaining := len(line) - pos; remaining > 0 {
+		fmt.Fprint(r.out, "\x1b[", strconv.Itoa(remaining), "D")
+	}
+}
+
+func (r *lineReader) recordHistory(line []byte) {
+	entry := strings.TrimSpace(string(line))
+	if entry == "" || len(r.history) > 0 && r.history[len(r.history)-1] == entry {
+		return
+	}
+	r.history = append(r.history, entry)
+	if len(r.history) > maxHistory {
+		r.history = r.history[1:]
+	}
+}
+
+func (r *lineReader) readPaste(ctx context.Context) []byte {
+	var pasted []byte
+	newline := false
+	for {
+		b, err := r.bytes.next(ctx, 0)
+		if err != nil {
+			return pasted
+		}
+		if b == 0x1b {
+			if r.readKey(ctx) == keyPasteEnd {
+				return pasted
+			}
+			newline = false
+			continue
+		}
+		pasted, newline = appendPasteByte(pasted, b, newline)
+	}
+}
+
+func appendPasteByte(pasted []byte, b byte, newline bool) ([]byte, bool) {
+	switch {
+	case b == '\r' || b == '\n':
+		if !newline {
+			pasted = append(pasted, ' ')
+		}
+		return pasted, true
+	case b == '\t':
+		return append(pasted, ' '), false
+	case b >= 0x20 && b < 0x7f:
+		return append(pasted, b), false
+	default:
+		return pasted, false
+	}
+}
+
+// readKey runs after an ESC byte and parses one terminal key sequence.
+func (r *lineReader) readKey(ctx context.Context) key {
+	b, err := r.bytes.next(ctx, r.escWait)
+	if err != nil {
+		if ctx.Err() == nil {
+			return keyEscape
+		}
+		return keyIgnored
+	}
+	switch b {
+	case '[':
+		return r.readCSIKey(ctx)
+	case 'O':
+		c, err := r.bytes.next(ctx, r.escWait)
+		if err != nil {
+			return keyIgnored
+		}
+		return keyFromFinal(c)
+	default:
+		return keyIgnored
+	}
+}
+
+func (r *lineReader) readCSIKey(ctx context.Context) key {
+	var params []byte
+	for {
+		c, err := r.bytes.next(ctx, r.escWait)
+		if err != nil {
+			return keyIgnored
+		}
+		if c >= 0x20 && c <= 0x3f {
+			params = append(params, c)
+			continue
+		}
+		if c < 0x40 || c > 0x7e {
+			return keyIgnored
+		}
+		if c == '~' {
+			return keyFromTilde(params)
+		}
+		return keyFromFinal(c)
+	}
+}
+
+func keyFromTilde(params []byte) key {
+	switch string(params) {
+	case "1", "7":
+		return keyHome
+	case "4", "8":
+		return keyEnd
+	case "3":
+		return keyDelete
+	case "200":
+		return keyPasteStart
+	case "201":
+		return keyPasteEnd
+	default:
+		return keyIgnored
+	}
+}
+
+func keyFromFinal(c byte) key {
+	switch c {
+	case 'A':
+		return keyUp
+	case 'B':
+		return keyDown
+	case 'C':
+		return keyRight
+	case 'D':
+		return keyLeft
+	case 'H':
+		return keyHome
+	case 'F':
+		return keyEnd
+	default:
+		return keyIgnored
+	}
 }
 
 // readLines prompts and calls fn with each non-blank trimmed line until the reader returns something other than
@@ -361,7 +656,7 @@ func printPromptHelp(out io.Writer) {
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "s", "status", "show the negotiated BusyTimeout and LeaseTimeout")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "h, ?", "help", "show this help")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "q", "quit", "quit the prompt")
-	fmt.Fprintln(out, `Type h, ?, or help to show this help. q, quit, Esc, or Ctrl-D quits.`)
+	fmt.Fprintln(out, `Type h, ?, or help to show this help. q, quit, Esc, or Ctrl-D quits. Up/Down recall history; cursor keys edit; bracketed paste inserts text.`)
 }
 
 // timeoutSource is the part of sip.Client the reporter needs.

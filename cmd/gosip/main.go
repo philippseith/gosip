@@ -22,8 +22,9 @@
 //
 // Without a command (terminal only), gosip prompts for read and write lines, e.g.
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
-// "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. "s" shows BusyTimeout
-// and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
+// "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. The editor supports
+// in-memory Up/Down history, cursor keys and bracketed paste; "s" shows timeouts, "h" shows help,
+// and "q"/"quit", Esc or Ctrl-D quits.
 package main
 
 import (
@@ -196,7 +197,7 @@ commands:
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
 
-Without a command (terminal only), gosip prompts for "[command] IDN" lines, e.g. "ro S-0-0032.0.0". Short commands: re (also r or omitted), ro, rd, rs, w IDN value... (formatted), wr IDN hex... (raw). "s" shows BusyTimeout and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
+Without a command (terminal only), gosip prompts for "[command] IDN" lines, e.g. "ro S-0-0032.0.0". Short commands: re (also r or omitted), ro, rd, rs, w IDN value... (formatted), wr IDN hex... (raw). The editor supports in-memory Up/Down history, Left/Right/Home/End/Delete, Ctrl-A/B/E/F, and bracketed paste. "s" shows BusyTimeout and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
 
 Run "gosip <command> -h" for the flags of a command.
 `)
