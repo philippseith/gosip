@@ -70,7 +70,7 @@ Running `gosip` without a command in a terminal opens the read/write prompt. Up 
 
 ## MCP stdio server
 
-Run `gosip mcp` to expose the CLI operations as MCP tools over standard input and output. Set `--address` and connection flags before `mcp`; device-addressed tools may override the default with an optional `address` field. The tools are `ping`, `readeverything`, `readonlydata`, `readdescription`, `readdatastate`, `writedata`, `browse`, `identify`, and `setip`. Results are structured JSON; the server keeps one client per normalized device address and closes idle clients after twice their negotiated lease timeout (20 seconds before a lease is negotiated, unless `--leasetimeout` overrides it). Broadcast tools use UDP and require an `interface` field.
+Run `gosip mcp` to expose the CLI operations as MCP tools over standard input and output. Pass `address` in every device-tool request (host[:port], default port 35021); `gosip mcp --address` is rejected. The tools are `ping`, `readeverything`, `readonlydata`, `readdescription`, `readdatastate`, `writedata`, `browse`, `identify`, and `setip`. Results are structured JSON; the server keeps one client per normalized device address and closes idle clients after twice their negotiated lease timeout (20 seconds before a lease is negotiated, unless `--leasetimeout` overrides it). Broadcast tools use UDP; `browse` without `interface` lists available interfaces, while `identify` and `setip` require it.
 
 ## Parsing formatted Sercos data
 

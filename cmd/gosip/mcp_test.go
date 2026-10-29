@@ -102,9 +102,9 @@ type cacheDialState struct {
 	clients   []*fakeMCPClient
 }
 
-func newCacheForTest(defaultAddress string, defaultLease, clientLease time.Duration, now *time.Time) (*clientCache, *cacheDialState) {
+func newCacheForTest(defaultLease, clientLease time.Duration, now *time.Time) (*clientCache, *cacheDialState) {
 	state := &cacheDialState{}
-	cache := newClientCache(defaultAddress, defaultLease, func(address string) (mcpClient, error) {
+	cache := newClientCache(defaultLease, func(address string) (mcpClient, error) {
 		state.dials++
 		state.addresses = append(state.addresses, address)
 		client := newFakeMCPClient(clientLease)
@@ -126,7 +126,7 @@ func cacheSize(cache *clientCache) int {
 func TestClientCache(t *testing.T) {
 	t.Run("address normalization, closed clients, and close", func(t *testing.T) {
 		now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-		cache, state := newCacheForTest("10.0.0.6", 5*time.Second, 10*time.Second, &now)
+		cache, state := newCacheForTest(5*time.Second, 10*time.Second, &now)
 		first, release, err := cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
@@ -141,13 +141,11 @@ func TestClientCache(t *testing.T) {
 			t.Fatalf("normalized addresses used %d dials and clients %p/%p, want one shared client", state.dials, first, second)
 		}
 
-		_, release, err = cache.get("")
-		if err != nil {
-			t.Fatal(err)
+		if _, _, err := cache.get(""); err == nil || !strings.Contains(err.Error(), "address is required") {
+			t.Fatalf("cache.get(empty address) error = %v, want required-address error", err)
 		}
-		release()
-		if state.dials != 2 || state.addresses[1] != "10.0.0.6:35021" {
-			t.Fatalf("empty address dialed %q; dials=%d", state.addresses[1], state.dials)
+		if state.dials != 1 {
+			t.Fatalf("missing address caused %d dials, want 1", state.dials)
 		}
 
 		state.clients[0].setClosed()
@@ -156,7 +154,7 @@ func TestClientCache(t *testing.T) {
 			t.Fatal(err)
 		}
 		release()
-		if replacement == first || state.dials != 3 {
+		if replacement == first || state.dials != 2 {
 			t.Fatalf("closed client was not replaced: dials=%d", state.dials)
 		}
 		inUse, releaseInUse, err := cache.get("10.0.0.5")
@@ -167,8 +165,8 @@ func TestClientCache(t *testing.T) {
 			t.Fatal(err)
 		}
 		releaseInUse()
-		if state.clients[1].closeCount() != 1 || state.clients[2].closeCount() != 1 {
-			t.Fatalf("Close did not close every cached client: default=%d replacement=%d", state.clients[1].closeCount(), state.clients[2].closeCount())
+		if state.clients[1].closeCount() != 1 {
+			t.Fatalf("cache close count=%d, want 1", state.clients[1].closeCount())
 		}
 		if inUse != replacement {
 			t.Fatal("cache returned a different client for an active address")
@@ -178,7 +176,7 @@ func TestClientCache(t *testing.T) {
 	t.Run("dial errors are not cached", func(t *testing.T) {
 		wantErr := errors.New("dial failed")
 		attempts := 0
-		cache := newClientCache("10.0.0.5", time.Second, func(string) (mcpClient, error) {
+		cache := newClientCache(time.Second, func(string) (mcpClient, error) {
 			attempts++
 			if attempts == 1 {
 				return nil, wantErr
@@ -186,10 +184,10 @@ func TestClientCache(t *testing.T) {
 			return newFakeMCPClient(time.Second), nil
 		})
 		t.Cleanup(func() { _ = cache.Close() })
-		if _, _, err := cache.get(""); !errors.Is(err, wantErr) {
+		if _, _, err := cache.get("10.0.0.5"); !errors.Is(err, wantErr) {
 			t.Fatalf("first get error = %v, want %v", err, wantErr)
 		}
-		client, release, err := cache.get("")
+		client, release, err := cache.get("10.0.0.5")
 		if err != nil || client == nil || attempts != 2 {
 			t.Fatalf("second get = (%v, %v), attempts=%d", client, err, attempts)
 		}
@@ -198,9 +196,9 @@ func TestClientCache(t *testing.T) {
 
 	t.Run("idle threshold and refreshed usage", func(t *testing.T) {
 		now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-		cache, state := newCacheForTest("10.0.0.5", 5*time.Second, 10*time.Second, &now)
+		cache, state := newCacheForTest(5*time.Second, 10*time.Second, &now)
 		t.Cleanup(func() { _ = cache.Close() })
-		_, release, err := cache.get("")
+		_, release, err := cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -215,7 +213,7 @@ func TestClientCache(t *testing.T) {
 		if cacheSize(cache) != 0 || state.clients[0].closeCount() != 1 {
 			t.Fatal("client was not evicted at twice its lease timeout")
 		}
-		_, release, err = cache.get("")
+		_, release, err = cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,13 +222,13 @@ func TestClientCache(t *testing.T) {
 			t.Fatalf("get after expiry used %d dials, want 2", state.dials)
 		}
 
-		_, release, err = cache.get("")
+		_, release, err = cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
 		release()
 		now = now.Add(15 * time.Second)
-		_, release, err = cache.get("")
+		_, release, err = cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,9 +247,9 @@ func TestClientCache(t *testing.T) {
 
 	t.Run("in-use entries and fallback lease", func(t *testing.T) {
 		now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-		cache, state := newCacheForTest("10.0.0.5", 5*time.Second, 10*time.Second, &now)
+		cache, state := newCacheForTest(5*time.Second, 10*time.Second, &now)
 		t.Cleanup(func() { _ = cache.Close() })
-		_, release, err := cache.get("")
+		_, release, err := cache.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,9 +272,9 @@ func TestClientCache(t *testing.T) {
 		}
 
 		fallbackNow := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
-		fallback, fallbackState := newCacheForTest("10.0.0.5", 5*time.Second, 0, &fallbackNow)
+		fallback, fallbackState := newCacheForTest(5*time.Second, 0, &fallbackNow)
 		t.Cleanup(func() { _ = fallback.Close() })
-		_, release, err = fallback.get("")
+		_, release, err = fallback.get("10.0.0.5")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -298,14 +296,14 @@ func TestClientCache(t *testing.T) {
 func TestClientCacheTimerEvicts(t *testing.T) {
 	var clients []*fakeMCPClient
 	dials := 0
-	cache := newClientCache("10.0.0.5", time.Second, func(string) (mcpClient, error) {
+	cache := newClientCache(time.Second, func(string) (mcpClient, error) {
 		dials++
 		client := newFakeMCPClient(10 * time.Millisecond)
 		clients = append(clients, client)
 		return client, nil
 	})
 	t.Cleanup(func() { _ = cache.Close() })
-	_, release, err := cache.get("")
+	_, release, err := cache.get("10.0.0.5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +318,7 @@ func TestClientCacheTimerEvicts(t *testing.T) {
 			t.Fatal("idle timer did not close the client")
 		}
 	}
-	_, release, err = cache.get("")
+	_, release, err = cache.get("10.0.0.5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +389,7 @@ func mcpErrorText(t *testing.T, result *mcp.CallToolResult) string {
 }
 
 func TestMCPListTools(t *testing.T) {
-	cache, _ := newCacheForTest("10.0.0.5", time.Second, time.Second, nil)
+	cache, _ := newCacheForTest(time.Second, time.Second, nil)
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
 	result, err := session.ListTools(context.Background(), nil)
@@ -412,11 +410,11 @@ func TestMCPListTools(t *testing.T) {
 func TestMCPReadOnlyData(t *testing.T) {
 	client := newFakeMCPClient(0)
 	now := time.Now()
-	cache, _ := newCacheForTest("10.0.0.5", time.Second, 0, &now)
+	cache, _ := newCacheForTest(time.Second, 0, &now)
 	cache.dial = func(string) (mcpClient, error) { return client, nil }
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
-	result := callMCPTool(t, session, "readonlydata", map[string]any{"idn": "S-0-0001"})
+	result := callMCPTool(t, session, "readonlydata", map[string]any{"idn": "S-0-0001", "address": "10.0.0.5"})
 	if result.IsError {
 		t.Fatalf("readonlydata returned error: %s", mcpErrorText(t, result))
 	}
@@ -429,8 +427,11 @@ func TestMCPReadOnlyData(t *testing.T) {
 		t.Errorf("attribute = %#v", attribute)
 	}
 	data := content["data"].(map[string]any)
-	if data["length"] != float64(2) || data["raw"] != "e8 03" {
+	if data["raw"] != "e8 03" {
 		t.Errorf("data = %#v", data)
+	}
+	if _, ok := data["length"]; ok {
+		t.Errorf("data contains removed length field: %#v", data)
 	}
 	elements := data["elements"].([]any)
 	if len(elements) != 1 || elements[0] != "1.000" {
@@ -445,11 +446,11 @@ func TestMCPReadEverythingGating(t *testing.T) {
 	client.readEverything.Name = []byte("sample")
 	client.readEverything.Data = []byte{0xe8, 0x03}
 	now := time.Now()
-	cache, _ := newCacheForTest("10.0.0.5", time.Second, 0, &now)
+	cache, _ := newCacheForTest(time.Second, 0, &now)
 	cache.dial = func(string) (mcpClient, error) { return client, nil }
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
-	result := callMCPTool(t, session, "readeverything", map[string]any{"idn": "S-0-0001"})
+	result := callMCPTool(t, session, "readeverything", map[string]any{"idn": "S-0-0001", "address": "10.0.0.5"})
 	if result.IsError {
 		t.Fatalf("readeverything returned error: %s", mcpErrorText(t, result))
 	}
@@ -471,12 +472,12 @@ func TestMCPReadEverythingGating(t *testing.T) {
 func TestMCPWriteData(t *testing.T) {
 	client := newFakeMCPClient(0)
 	now := time.Now()
-	cache, _ := newCacheForTest("10.0.0.5", time.Second, 0, &now)
+	cache, _ := newCacheForTest(time.Second, 0, &now)
 	cache.dial = func(string) (mcpClient, error) { return client, nil }
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
 
-	result := callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "1.000"})
+	result := callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "1.000", "address": "10.0.0.5"})
 	if result.IsError {
 		t.Fatalf("formatted write returned error: %s", mcpErrorText(t, result))
 	}
@@ -485,7 +486,7 @@ func TestMCPWriteData(t *testing.T) {
 		t.Fatalf("formatted write result=%#v bytes=%v", content, client.written)
 	}
 
-	result = callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "e8", "raw": true})
+	result = callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "e8", "raw": true, "address": "10.0.0.5"})
 	if message := mcpErrorText(t, result); !strings.Contains(message, "does not match") {
 		t.Fatalf("raw length error = %q", message)
 	}
@@ -493,7 +494,7 @@ func TestMCPWriteData(t *testing.T) {
 		t.Fatalf("invalid raw data caused %d writes, want 1", client.writeCalls)
 	}
 
-	result = callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "e8 03", "raw": true})
+	result = callMCPTool(t, session, "writedata", map[string]any{"idn": "S-0-0001", "data": "e8 03", "raw": true, "address": "10.0.0.5"})
 	if result.IsError {
 		t.Fatalf("raw write returned error: %s", mcpErrorText(t, result))
 	}
@@ -503,7 +504,7 @@ func TestMCPWriteData(t *testing.T) {
 }
 
 func TestMCPValidation(t *testing.T) {
-	cache, _ := newCacheForTest("10.0.0.5", time.Second, 0, nil)
+	cache, _ := newCacheForTest(time.Second, 0, nil)
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
 	cases := []struct {
@@ -512,12 +513,13 @@ func TestMCPValidation(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"missing IDN", "readonlydata", map[string]any{}, "idn is required"},
-		{"invalid IDN", "readonlydata", map[string]any{"idn": "bogus"}, "invalid IDN"},
-		{"slave range", "readonlydata", map[string]any{"idn": "S-0-0001", "slave": 70000}, "slave must be 0..65535"},
-		{"missing data", "writedata", map[string]any{"idn": "S-0-0001"}, "data is required"},
+		{"missing address", "readonlydata", map[string]any{"idn": "S-0-0001"}, "address"},
+		{"empty address", "readonlydata", map[string]any{"idn": "S-0-0001", "address": ""}, "address is required"},
+		{"missing IDN", "readonlydata", map[string]any{"address": "10.0.0.5"}, "idn is required"},
+		{"invalid IDN", "readonlydata", map[string]any{"idn": "bogus", "address": "10.0.0.5"}, "invalid IDN"},
+		{"slave range", "readonlydata", map[string]any{"idn": "S-0-0001", "address": "10.0.0.5", "slave": 70000}, "slave must be 0..65535"},
+		{"missing data", "writedata", map[string]any{"idn": "S-0-0001", "address": "10.0.0.5"}, "data is required"},
 		{"missing node", "identify", map[string]any{"interface": "lo"}, "node is required"},
-		{"missing interface", "browse", map[string]any{}, "interface is required"},
 		{"invalid listen", "browse", map[string]any{"interface": "lo", "listen": "abc"}, "invalid listen duration"},
 	}
 	for _, tc := range cases {
@@ -532,20 +534,49 @@ func TestMCPValidation(t *testing.T) {
 
 func TestMCPAddressUsesCache(t *testing.T) {
 	now := time.Now()
-	cache, state := newCacheForTest("10.0.0.4", time.Second, 0, &now)
+	cache, state := newCacheForTest(time.Second, 0, &now)
 	t.Cleanup(func() { _ = cache.Close() })
 	session := connectMCP(t, cache)
-	for _, args := range []map[string]any{
-		{"idn": "S-0-0001"},
-		{"idn": "S-0-0001", "address": "10.0.0.5"},
-		{"idn": "S-0-0001"},
-	} {
-		result := callMCPTool(t, session, "readonlydata", args)
+
+	missing := callMCPTool(t, session, "readonlydata", map[string]any{"idn": "S-0-0001"})
+	if message := mcpErrorText(t, missing); !strings.Contains(message, "address") {
+		t.Fatalf("missing address error = %q", message)
+	}
+	for _, address := range []string{"10.0.0.5", "10.0.0.4", "10.0.0.5"} {
+		result := callMCPTool(t, session, "readonlydata", map[string]any{"idn": "S-0-0001", "address": address})
 		if result.IsError {
-			t.Fatalf("readonlydata returned error: %s", mcpErrorText(t, result))
+			t.Fatalf("readonlydata at %s returned error: %s", address, mcpErrorText(t, result))
 		}
 	}
 	if state.dials != 2 {
 		t.Fatalf("addressed calls caused %d dials, want 2", state.dials)
+	}
+}
+
+func TestMCPBrowseListsInterfaces(t *testing.T) {
+	want, err := availableInterfaces()
+	if err != nil || len(want) == 0 {
+		t.Skip("no available IPv4 interfaces")
+	}
+	cache, _ := newCacheForTest(time.Second, 0, nil)
+	t.Cleanup(func() { _ = cache.Close() })
+	session := connectMCP(t, cache)
+	result := callMCPTool(t, session, "browse", map[string]any{})
+	if result.IsError {
+		t.Fatalf("browse returned error: %s", mcpErrorText(t, result))
+	}
+	content := structuredMCPContent(t, result)
+	interfaces, ok := content["interfaces"].([]any)
+	if !ok || len(interfaces) != len(want) {
+		t.Fatalf("interfaces = %#v, want %v", content["interfaces"], want)
+	}
+	for i, name := range want {
+		if interfaces[i] != name {
+			t.Errorf("interfaces[%d] = %v, want %q", i, interfaces[i], name)
+		}
+	}
+	devices, ok := content["devices"].([]any)
+	if !ok || len(devices) != 0 {
+		t.Errorf("devices = %#v, want an empty array", content["devices"])
 	}
 }

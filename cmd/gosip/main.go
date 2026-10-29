@@ -20,7 +20,9 @@
 //	identify         Broadcast an Identify request
 //	setip            Broadcast a SetIP request
 //
-//	mcp              Serve the CLI tools over MCP stdio
+//	mcp              Serve the CLI tools over MCP stdio; address is passed per request, --address is rejected
+//
+// MCP device requests require an address in each tool call; --address is not used by mcp.
 //
 // Without a command (terminal only), gosip prompts for read and write lines, e.g.
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
@@ -119,7 +121,10 @@ func run(args []string) error { // nolint:cyclop
 		defaultLease = time.Duration(g.leaseTimeout) * time.Millisecond
 	}
 	if cmd == "mcp" {
-		return doMCP(cmdArgs, dial, g.address, defaultLease, reqOptions)
+		if fs.Changed("address") {
+			return errors.New("mcp does not use --address; pass address in each tool request")
+		}
+		return doMCP(cmdArgs, dial, defaultLease, reqOptions)
 	}
 
 	client, err := dial(g.address)
@@ -208,10 +213,11 @@ commands:
   browse           broadcast a Browse request and list the answering devices
   identify         broadcast an Identify request to a device
   setip            broadcast a SetIP request to configure a device
-  mcp              serve the CLI tools over MCP stdio
+  mcp              serve the CLI tools over MCP stdio; address is passed per request, --address is rejected
 
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
+The mcp command requires an address in every device tool request and rejects --address.
 
 
 Run "gosip <command> -h" for the flags of a command.
@@ -595,14 +601,11 @@ func formatMAC(b [6]byte) string {
 	return net.HardwareAddr(b[:]).String()
 }
 
-func interfaceFlagUsage() string {
-	const description = "[mandatory] name of the network interface to broadcast on"
-
+func availableInterfaces() ([]string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return description + "; available interfaces: unavailable"
+		return nil, err
 	}
-
 	names := make([]string, 0, len(interfaces))
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 {
@@ -623,11 +626,19 @@ func interfaceFlagUsage() string {
 			}
 		}
 	}
+	sort.Strings(names)
+	return names, nil
+}
 
+func interfaceFlagUsage() string {
+	const description = "[mandatory] name of the network interface to broadcast on"
+	names, err := availableInterfaces()
+	if err != nil {
+		return description + "; available interfaces: unavailable"
+	}
 	if len(names) == 0 {
 		return description + "; available interfaces: none"
 	}
-	sort.Strings(names)
 	return description + "; available interfaces: " + strings.Join(names, ", ")
 }
 

@@ -20,7 +20,7 @@ import (
 	"github.com/philippseith/gosip/sip"
 )
 
-const mcpInstructions = "S/IP (Sercos Internet Protocol) client. IDNs are given as numbers (4106, 0x100A) or Sercos notation (S-0-0095, P-0-0100.1.2). The optional address parameter selects the device (host[:port], default port 35021); it defaults to the address gosip was started with. Tools whose names are browse, identify and setip use UDP broadcasts on a network interface."
+const mcpInstructions = "S/IP (Sercos Internet Protocol) client. IDNs are given as numbers (4106, 0x100A) or Sercos notation (S-0-0095, P-0-0100.1.2). Every device tool requires the address parameter (host[:port], default port 35021); tools whose names are browse, identify and setip use UDP broadcasts on a network interface. Browse without an interface lists the available interfaces."
 
 // mcpClient is the part of sip.Client used by the MCP server.
 type mcpClient interface {
@@ -38,27 +38,25 @@ type cacheEntry struct {
 }
 
 type clientCache struct {
-	mu             sync.Mutex
-	defaultAddress string
-	defaultLease   time.Duration
-	dial           func(address string) (mcpClient, error)
-	now            func() time.Time
-	clients        map[string]*cacheEntry
+	mu           sync.Mutex
+	defaultLease time.Duration
+	dial         func(address string) (mcpClient, error)
+	now          func() time.Time
+	clients      map[string]*cacheEntry
 }
 
-func newClientCache(defaultAddress string, defaultLease time.Duration, dial func(address string) (mcpClient, error)) *clientCache {
+func newClientCache(defaultLease time.Duration, dial func(address string) (mcpClient, error)) *clientCache {
 	return &clientCache{
-		defaultAddress: defaultAddress,
-		defaultLease:   defaultLease,
-		dial:           dial,
-		now:            time.Now,
-		clients:        make(map[string]*cacheEntry),
+		defaultLease: defaultLease,
+		dial:         dial,
+		now:          time.Now,
+		clients:      make(map[string]*cacheEntry),
 	}
 }
 
 func (c *clientCache) get(address string) (mcpClient, func(), error) {
-	if address == "" {
-		address = c.defaultAddress
+	if err := required("address", address); err != nil {
+		return nil, nil, err
 	}
 	key := addressWithDefaultPort(address)
 
@@ -178,7 +176,6 @@ type limitInfo struct {
 }
 
 type dataInfo struct {
-	Length   int      `json:"length"`
 	Elements []string `json:"elements"`
 	Raw      string   `json:"raw"`
 }
@@ -209,7 +206,7 @@ func newDataInfo(data []byte, a sercos.Attribute) *dataInfo {
 	if elements == nil {
 		elements = []string{}
 	}
-	return &dataInfo{Length: len(data), Elements: elements, Raw: formatBytes(data)}
+	return &dataInfo{Elements: elements, Raw: formatBytes(data)}
 }
 
 func (t *mcpTools) target(address string, slave, ext int, idnStr string) (mcpClient, func(), uint32, error) {
@@ -260,18 +257,17 @@ type mcpTools struct {
 }
 
 type addressInput struct {
-	Address string `json:"address,omitempty" jsonschema:"device address host[:port]; defaults to gosip's --address"`
+	Address string `json:"address" jsonschema:"device address host[:port] (default port 35021), for example 192.168.1.50"`
 }
-
 type idnInput struct {
-	Address string `json:"address,omitempty" jsonschema:"device address host[:port]; defaults to gosip's --address"`
+	Address string `json:"address" jsonschema:"device address host[:port] (default port 35021), for example 192.168.1.50"`
 	Slave   int    `json:"slave,omitempty" jsonschema:"slave index from 0 to 65535"`
 	Ext     int    `json:"ext,omitempty" jsonschema:"slave extension from 0 to 65535"`
 	IDN     string `json:"idn,omitempty" jsonschema:"IDN as a number or Sercos notation"`
 }
 
 type writeInput struct {
-	Address string `json:"address,omitempty" jsonschema:"device address host[:port]; defaults to gosip's --address"`
+	Address string `json:"address" jsonschema:"device address host[:port] (default port 35021), for example 192.168.1.50"`
 	Slave   int    `json:"slave,omitempty" jsonschema:"slave index from 0 to 65535"`
 	Ext     int    `json:"ext,omitempty" jsonschema:"slave extension from 0 to 65535"`
 	IDN     string `json:"idn,omitempty" jsonschema:"IDN as a number or Sercos notation"`
@@ -280,7 +276,7 @@ type writeInput struct {
 }
 
 type browseInput struct {
-	Interface string `json:"interface,omitempty" jsonschema:"network interface for the UDP broadcast"`
+	Interface string `json:"interface,omitempty" jsonschema:"network interface for the UDP broadcast; omit it to list the available interfaces instead of browsing"`
 	Listen    string `json:"listen,omitempty" jsonschema:"response listening duration, such as 3s; defaults to 3s"`
 }
 
@@ -358,8 +354,9 @@ type browseDevice struct {
 }
 
 type browseOutput struct {
-	Devices []browseDevice `json:"devices"`
-	Errors  []string       `json:"errors"`
+	Devices    []browseDevice `json:"devices"`
+	Errors     []string       `json:"errors"`
+	Interfaces []string       `json:"interfaces,omitempty" jsonschema:"available network interfaces; only set when no interface was given"`
 }
 
 type broadcastOutput struct {
@@ -374,7 +371,7 @@ func newMCPServer(clients *clientCache, options []sip.RequestOption) *mcp.Server
 	tools := &mcpTools{clients: clients, options: options}
 	mcp.AddTool(server, &mcp.Tool{Name: "ping", Description: "Send a S/IP Ping.", Annotations: readOnlyAnnotations}, tools.ping)
 	mcp.AddTool(server, &mcp.Tool{Name: "readeverything", Description: "Read description, data state and data of an IDN.", Annotations: readOnlyAnnotations}, tools.readEverything)
-	mcp.AddTool(server, &mcp.Tool{Name: "readonlydata", Description: "Read only the data of an IDN.", Annotations: readOnlyAnnotations}, tools.readOnlyData)
+	mcp.AddTool(server, &mcp.Tool{Name: "readonlydata", Description: "Read the data and the attribute of an IDN.", Annotations: readOnlyAnnotations}, tools.readOnlyData)
 	mcp.AddTool(server, &mcp.Tool{Name: "readdescription", Description: "Read only the description of an IDN.", Annotations: readOnlyAnnotations}, tools.readDescription)
 	mcp.AddTool(server, &mcp.Tool{Name: "readdatastate", Description: "Read only the data state of an IDN.", Annotations: readOnlyAnnotations}, tools.readDataState)
 	mcp.AddTool(server, &mcp.Tool{Name: "writedata", Description: "Write data to an IDN."}, tools.writeData)
@@ -515,8 +512,15 @@ func (t *mcpTools) writeData(ctx context.Context, _ *mcp.CallToolRequest, in wri
 }
 
 func (t *mcpTools) browse(ctx context.Context, _ *mcp.CallToolRequest, in browseInput) (*mcp.CallToolResult, browseOutput, error) {
-	if err := required("interface", in.Interface); err != nil {
-		return nil, browseOutput{}, err
+	if strings.TrimSpace(in.Interface) == "" {
+		names, err := availableInterfaces()
+		if err != nil {
+			return nil, browseOutput{}, err
+		}
+		if len(names) == 0 {
+			return nil, browseOutput{}, errors.New("no network interface with an IPv4 address is up")
+		}
+		return nil, browseOutput{Devices: []browseDevice{}, Errors: []string{}, Interfaces: names}, nil
 	}
 	listen, err := parseListen(in.Listen)
 	if err != nil {
@@ -663,7 +667,7 @@ func descriptionValues(valid uint16, attribute uint32, name, unit []byte, minVal
 	return attributeResult, nameResult, unitResult, minResult, maxResult
 }
 
-func doMCP(args []string, dial func(string) (sip.Client, error), defaultAddress string, defaultLease time.Duration, options []sip.RequestOption) error {
+func doMCP(args []string, dial func(string) (sip.Client, error), defaultLease time.Duration, options []sip.RequestOption) error {
 	fs := newFlagSet("mcp")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -678,7 +682,7 @@ func doMCP(args []string, dial func(string) (sip.Client, error), defaultAddress 
 		}
 		return client, nil
 	}
-	clients := newClientCache(defaultAddress, defaultLease, wrappedDial)
+	clients := newClientCache(defaultLease, wrappedDial)
 	defer func() { _ = clients.Close() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
