@@ -19,13 +19,28 @@
 //	browse           Broadcast a Browse request and list the answering devices
 //	identify         Broadcast an Identify request
 //	setip            Broadcast a SetIP request
+//
+//	mcp              Serve the CLI tools over MCP stdio; address is passed per request, --address is rejected
+//
+// MCP device requests require an address in each tool call; --address is not used by mcp. Requests may only
+// connect to port 35021 unless mcp is started with --allow-port, and only to IPv4 addresses (host names are never
+// accepted) of devices that answer a Browse on the interface routing to them unless mcp is started with
+// --allow-all-hosts.
+//
+// Without a command (terminal only), gosip prompts for read and write lines, e.g.
+// "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
+// "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. The editor supports
+// in-memory Up/Down history, cursor keys and bracketed paste; "s" shows timeouts, "h" shows help,
+// "a host[:port]" changes the target, "b [interface]" browses devices, and "q"/"quit", Esc or Ctrl-D quits.
 package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sort"
@@ -33,8 +48,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/philippseith/gosip/sercos"
 	"github.com/philippseith/gosip/sip"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 type globalFlags struct {
@@ -73,14 +90,19 @@ func run(args []string) error { // nolint:cyclop
 	if err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+	menu := fs.NArg() == 0
+	if menu && !term.IsTerminal(int(os.Stdin.Fd())) {
 		fs.Usage()
 		return errors.New("no command given")
 	}
 
 	sip.EnableLogging(g.verbose)
 
-	cmd, cmdArgs := fs.Arg(0), fs.Args()[1:]
+	var cmd string
+	var cmdArgs []string
+	if !menu {
+		cmd, cmdArgs = fs.Arg(0), fs.Args()[1:]
+	}
 
 	// Browse, Identify and SetIP are UDP broadcasts and need no client.
 	switch cmd {
@@ -92,6 +114,34 @@ func run(args []string) error { // nolint:cyclop
 		return doSetIP(cmdArgs)
 	}
 
+	dial := newDialer(g)
+	reqOptions := []sip.RequestOption{sip.WithRetries(g.retries)}
+	if g.timeout > 0 {
+		reqOptions = append(reqOptions, sip.WithTimeout(g.timeout))
+	}
+	defaultLease := 10 * time.Second
+	if g.leaseTimeout > 0 {
+		defaultLease = time.Duration(g.leaseTimeout) * time.Millisecond
+	}
+	if cmd == "mcp" {
+		if fs.Changed("address") {
+			return errors.New("mcp does not use --address; pass address in each tool request")
+		}
+		return doMCP(cmdArgs, dial, defaultLease, reqOptions)
+	}
+
+	client, err := dial(g.address)
+	if err != nil {
+		return err
+	}
+	if menu {
+		return runPrompt(client, g.address, dial, reqOptions)
+	}
+	defer func() { _ = client.Close() }()
+	return runClientCommand(client, cmd, cmdArgs, reqOptions, fs)
+}
+
+func newDialer(g globalFlags) func(address string) (sip.Client, error) {
 	connOptions := []sip.ConnOption{}
 	if g.busyTimeout > 0 {
 		connOptions = append(connOptions, sip.WithBusyTimeout(g.busyTimeout))
@@ -102,47 +152,39 @@ func run(args []string) error { // nolint:cyclop
 	if g.keepAlive {
 		connOptions = append(connOptions, sip.WithSendKeepAlive())
 	}
-	dialCtx, cancelDial := context.WithTimeout(context.Background(), g.dialTimeout)
-	defer cancelDial()
-	connOptions = append(connOptions, sip.WithDialContext(dialCtx))
-
-	client, err := sip.NewClient("tcp4", g.address, connOptions...)
-	if err != nil {
-		return err
+	dialer := net.Dialer{Timeout: g.dialTimeout}
+	connOptions = append(connOptions, sip.WithDial(func(ctx context.Context, network, address string) (io.ReadWriteCloser, error) {
+		c, err := dialer.DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err // never return a typed-nil net.Conn inside the interface
+		}
+		return c, nil
+	}))
+	return func(address string) (sip.Client, error) {
+		return sip.NewClient("tcp4", address, connOptions...)
 	}
-	defer func() { _ = client.Close() }()
-
-	reqOptions := []sip.RequestOption{sip.WithRetries(g.retries)}
-	if g.timeout > 0 {
-		reqOptions = append(reqOptions, sip.WithTimeout(g.timeout))
-	}
-
-	cmdErr := runClientCommand(client, cmd, cmdArgs, reqOptions, fs)
-	if !errors.Is(cmdErr, pflag.ErrHelp) {
-		fmt.Printf("BusyTimeout: %v\n", client.BusyTimeout())
-		fmt.Printf("LeaseTimeout: %v\n", client.LeaseTimeout())
-	}
-	return cmdErr
 }
 
 func runClientCommand(client sip.Client, cmd string, cmdArgs []string, reqOptions []sip.RequestOption, fs *pflag.FlagSet) error {
+	for _, rc := range readCommands {
+		if rc.name == cmd {
+			return doRead(rc, client, cmdArgs, reqOptions) // prints the timeouts itself
+		}
+	}
+	var err error
 	switch cmd {
 	case "ping":
-		return doPing(client, cmdArgs, reqOptions)
-	case "readeverything":
-		return doReadEverything(client, cmdArgs, reqOptions)
-	case "readonlydata":
-		return doReadOnlyData(client, cmdArgs, reqOptions)
-	case "readdescription":
-		return doReadDescription(client, cmdArgs, reqOptions)
-	case "readdatastate":
-		return doReadDataState(client, cmdArgs, reqOptions)
+		err = doPing(client, cmdArgs, reqOptions)
 	case "writedata":
-		return doWriteData(client, cmdArgs, reqOptions)
+		err = doWriteData(client, cmdArgs, reqOptions)
 	default:
 		fs.Usage()
 		return fmt.Errorf("unknown command %q", cmd)
 	}
+	if !errors.Is(err, pflag.ErrHelp) {
+		newTimeoutReporter(client, os.Stdout).printIfConnected()
+	}
+	return err
 }
 
 func parseGlobalFlags(args []string) (globalFlags, *pflag.FlagSet, error) {
@@ -151,11 +193,11 @@ func parseGlobalFlags(args []string) (globalFlags, *pflag.FlagSet, error) {
 	fs := pflag.NewFlagSet("gosip", pflag.ContinueOnError)
 	fs.SetInterspersed(false)
 	fs.SortFlags = false
-	fs.StringVarP(&g.address, "address", "a", fmt.Sprintf("127.0.0.1:%d", sip.Port), "[optional] address of the S/IP server")
+	fs.StringVarP(&g.address, "address", "a", fmt.Sprintf("127.0.0.1:%d", sip.Port), "[optional] S/IP server address (port defaults to 35021)")
 	fs.IntVarP(&g.busyTimeout, "busytimeout", "b", 0, "[optional] busy timeout in ms (default: server default)")
 	fs.IntVarP(&g.leaseTimeout, "leasetimeout", "l", 0, "[optional] lease timeout in ms (default: server default)")
 	fs.BoolVarP(&g.keepAlive, "keepalive", "k", false, "[optional] send keep alive pings (default: false)")
-	fs.DurationVarP(&g.dialTimeout, "dialtimeout", "d", 5*time.Second, "[optional] timeout for the initial connection")
+	fs.DurationVarP(&g.dialTimeout, "dialtimeout", "d", 5*time.Second, "[optional] timeout for each TCP connection attempt")
 	fs.DurationVarP(&g.timeout, "timeout", "t", 5*time.Second, "[optional] timeout per request (0: no timeout)")
 	fs.UintVarP(&g.retries, "retries", "r", 0, "[optional] number of retries per request (default: 0)")
 	fs.BoolVarP(&g.verbose, "verbose", "v", false, "[optional] enable S/IP logging on stderr (default: false)")
@@ -173,15 +215,60 @@ commands:
   browse           broadcast a Browse request and list the answering devices
   identify         broadcast an Identify request to a device
   setip            broadcast a SetIP request to configure a device
+  mcp              serve the CLI tools over MCP stdio; address is passed per request, --address is rejected
 
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
+The mcp command requires an address in every device tool request and rejects --address; the address must be an IPv4 address with an optional port, tool requests may only use port 35021 unless "mcp --allow-port <port>" widens it, and only devices that answer a UDP Browse on the interface routing to them are used unless "mcp --allow-all-hosts" is given.
+The interactive prompt accepts "a host[:port]" (or "address host[:port]") to switch the S/IP target and "b [interface]" to browse; omit the interface to choose from available IPv4 interfaces.
+
 
 Run "gosip <command> -h" for the flags of a command.
 `)
 	}
 	err := fs.Parse(args)
+	if err == nil {
+		if g.address, err = addressWithDefaultPort(g.address); err != nil {
+			err = fmt.Errorf("invalid --address: %w", err)
+		}
+	}
 	return g, fs, err
+}
+
+// addressWithDefaultPort adds the default S/IP port to an address without one. An empty address, host or port
+// is rejected: net.SplitHostPort accepts "host:" and ":35021", but the first dials with no port and the second
+// the local machine.
+func addressWithDefaultPort(address string) (string, error) {
+	if address == "" {
+		return "", errors.New("the address is empty")
+	}
+	if host, portText, err := net.SplitHostPort(address); err == nil {
+		if host == "" {
+			return "", fmt.Errorf("address %q has no host", address)
+		}
+		if portText == "" {
+			return "", fmt.Errorf("address %q has no port; omit the colon to use port %d", address, sip.Port)
+		}
+		return address, nil
+	}
+	return joinDefaultPort(address), nil
+}
+
+// joinDefaultPort adds the default port to an address that SplitHostPort rejects, mostly because it has no port.
+func joinDefaultPort(address string) string {
+	port := strconv.Itoa(sip.Port)
+	if net.ParseIP(address) != nil {
+		return net.JoinHostPort(address, port)
+	}
+	if len(address) >= 2 && address[0] == '[' && address[len(address)-1] == ']' {
+		if host := address[1 : len(address)-1]; net.ParseIP(host) != nil {
+			return net.JoinHostPort(host, port)
+		}
+	}
+	if !strings.Contains(address, ":") {
+		return net.JoinHostPort(address, port)
+	}
+	return address
 }
 
 // target holds the flags shared by all IDN addressed commands.
@@ -189,14 +276,19 @@ type target struct {
 	slaveIndex     int
 	slaveExtension int
 	idn            uint32
+	idnGiven       bool // --idn was given; otherwise (only if !idnRequired) IDNs are prompted for
 }
 
-func parseTarget(name string, args []string, extra func(*pflag.FlagSet)) (target, *pflag.FlagSet, error) {
+func parseTarget(name string, args []string, extra func(*pflag.FlagSet), idnRequired bool) (target, *pflag.FlagSet, error) {
 	var t target
 	var idnStr string
 
+	idnUsage := `[mandatory] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S30 or S-95.0.0)`
+	if !idnRequired {
+		idnUsage = `[optional] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S30 or S-95.0.0); if omitted, IDNs are prompted for until Ctrl-C or Ctrl-D (enter s for the negotiated timeouts; h for help; q to quit)`
+	}
 	fs := newFlagSet(name)
-	fs.StringVarP(&idnStr, "idn", "i", "", `[mandatory] IDN, either numeric (4106, 0x100A) or Sercos notation (S-0-0095.0.0)`)
+	fs.StringVarP(&idnStr, "idn", "i", "", idnUsage)
 	if extra != nil {
 		extra(fs)
 	}
@@ -206,6 +298,9 @@ func parseTarget(name string, args []string, extra func(*pflag.FlagSet)) (target
 		return t, fs, err
 	}
 	if idnStr == "" {
+		if !idnRequired {
+			return t, fs, nil
+		}
 		fs.Usage()
 		return t, fs, errors.New("--idn is required")
 	}
@@ -214,6 +309,7 @@ func parseTarget(name string, args []string, extra func(*pflag.FlagSet)) (target
 		return t, fs, err
 	}
 	t.idn = idn
+	t.idnGiven = true
 	return t, fs, nil
 }
 
@@ -230,82 +326,113 @@ func doPing(client sip.Client, args []string, options []sip.RequestOption) error
 	return nil
 }
 
-func doReadEverything(client sip.Client, args []string, options []sip.RequestOption) error {
-	t, _, err := parseTarget("readeverything", args, nil)
+type readCommand struct {
+	name    string
+	short   string
+	summary string
+	read    func(client sip.Client, slaveIndex, slaveExtension int, idn uint32, options []sip.RequestOption) error
+}
+
+var readCommands = []readCommand{
+	{"readeverything", "re", "read description, data state and data of an IDN", readEverything},
+	{"readonlydata", "ro", "read only the data of an IDN", readOnlyData},
+	{"readdescription", "rd", "read only the description of an IDN", readDescription},
+	{"readdatastate", "rs", "read only the data state of an IDN", readDataState},
+}
+
+func doRead(rc readCommand, client sip.Client, args []string, options []sip.RequestOption) error {
+	t, _, err := parseTarget(rc.name, args, nil, false)
 	if err != nil {
 		return err
 	}
-	resp, err := client.ReadEverything(t.slaveIndex, t.slaveExtension, t.idn, options...)
+	if t.idnGiven {
+		err := rc.read(client, t.slaveIndex, t.slaveExtension, t.idn, options)
+		newTimeoutReporter(client, os.Stdout).printIfConnected()
+		return err
+	}
+	return forEachIDN(client, options, func(idn uint32, options []sip.RequestOption) error {
+		return rc.read(client, t.slaveIndex, t.slaveExtension, idn, options)
+	})
+}
+
+func readEverything(client sip.Client, slaveIndex, slaveExtension int, idn uint32, options []sip.RequestOption) error {
+	resp, err := client.ReadEverything(slaveIndex, slaveExtension, idn, options...)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("IDN:           %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:           %s\n", sercos.Idn(idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
-	fmt.Printf("DataState:     0x%04x\n", resp.DataState)
-	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
-	fmt.Printf("Name:          %s\n", string(resp.Name))
-	fmt.Printf("Unit:          %s\n", string(resp.Unit))
-	fmt.Printf("Min:           %s\n", hex.EncodeToString(resp.Min[:]))
-	fmt.Printf("Max:           %s\n", hex.EncodeToString(resp.Max[:]))
+	if resp.ValidElements&sip.ElmDataState != 0 {
+		fmt.Printf("DataState:     0x%04x\n", resp.DataState)
+	}
+	if resp.ValidElements&sip.ElmAttribute != 0 {
+		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
+	}
+	if resp.ValidElements&sip.ElmName != 0 {
+		fmt.Printf("Name:          %s\n", sanitizeText(string(resp.Name)))
+	}
+	if resp.ValidElements&sip.ElmUnit != 0 {
+		fmt.Printf("Unit:          %s\n", sanitizeText(string(resp.Unit)))
+	}
+	width := terminalWidth()
+	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
-	printData(resp.Data)
+	if resp.ValidElements&sip.ElmData != 0 {
+		printData(os.Stdout, width, resp.Data, sercos.Attribute(resp.Attribute))
+	}
 	return nil
 }
 
-func doReadOnlyData(client sip.Client, args []string, options []sip.RequestOption) error {
-	t, _, err := parseTarget("readonlydata", args, nil)
+func readOnlyData(client sip.Client, slaveIndex, slaveExtension int, idn uint32, options []sip.RequestOption) error {
+	resp, err := client.ReadOnlyData(slaveIndex, slaveExtension, idn, options...)
 	if err != nil {
 		return err
 	}
-	resp, err := client.ReadOnlyData(t.slaveIndex, t.slaveExtension, t.idn, options...)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("IDN:       %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:       %s\n", sercos.Idn(idn))
 	fmt.Printf("Attribute: 0x%08x\n", resp.Attribute)
-	printData(resp.Data)
+	printData(os.Stdout, terminalWidth(), resp.Data, sercos.Attribute(resp.Attribute))
 	return nil
 }
 
-func doReadDescription(client sip.Client, args []string, options []sip.RequestOption) error {
-	t, _, err := parseTarget("readdescription", args, nil)
+func readDescription(client sip.Client, slaveIndex, slaveExtension int, idn uint32, options []sip.RequestOption) error {
+	resp, err := client.ReadDescription(slaveIndex, slaveExtension, idn, options...)
 	if err != nil {
 		return err
 	}
-	resp, err := client.ReadDescription(t.slaveIndex, t.slaveExtension, t.idn, options...)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("IDN:           %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:           %s\n", sercos.Idn(idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
-	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
-	fmt.Printf("Name:          %s\n", string(resp.Name))
-	fmt.Printf("Unit:          %s\n", string(resp.Unit))
-	fmt.Printf("Min:           %s\n", hex.EncodeToString(resp.Min[:]))
-	fmt.Printf("Max:           %s\n", hex.EncodeToString(resp.Max[:]))
+	if resp.ValidElements&sip.ElmAttribute != 0 {
+		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
+	}
+	if resp.ValidElements&sip.ElmName != 0 {
+		fmt.Printf("Name:          %s\n", sanitizeText(string(resp.Name)))
+	}
+	if resp.ValidElements&sip.ElmUnit != 0 {
+		fmt.Printf("Unit:          %s\n", sanitizeText(string(resp.Unit)))
+	}
+	width := terminalWidth()
+	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
 	return nil
 }
 
-func doReadDataState(client sip.Client, args []string, options []sip.RequestOption) error {
-	t, _, err := parseTarget("readdatastate", args, nil)
+func readDataState(client sip.Client, slaveIndex, slaveExtension int, idn uint32, options []sip.RequestOption) error {
+	resp, err := client.ReadDataState(slaveIndex, slaveExtension, idn, options...)
 	if err != nil {
 		return err
 	}
-	resp, err := client.ReadDataState(t.slaveIndex, t.slaveExtension, t.idn, options...)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("IDN:       %s\n", sip.Idn(t.idn))
+	fmt.Printf("IDN:       %s\n", sercos.Idn(idn))
 	fmt.Printf("DataState: 0x%04x\n", resp.DataState)
 	return nil
 }
 
-func doWriteData(client sip.Client, args []string, options []sip.RequestOption) error {
+func doWriteData(client dataClient, args []string, options []sip.RequestOption) error {
 	var dataStr string
+	var raw bool
 	t, fs, err := parseTarget("writedata", args, func(fs *pflag.FlagSet) {
-		fs.StringVarP(&dataStr, "data", "d", "", "[mandatory] data as hex string, e.g. 0a1b2c3d")
-	})
+		fs.StringVarP(&dataStr, "data", "d", "", "[mandatory] data, formatted (default) or raw hex bytes with --raw")
+		fs.BoolVar(&raw, "raw", false, "[optional] --data is raw hex bytes, e.g. 0a1b2c3d (written as given, without reading the IDN first); default: formatted data as printed by readonlydata, e.g. 1.000, 0x0102, P-0-0001; several elements separated by spaces")
+	}, true)
 	if err != nil {
 		return err
 	}
@@ -313,15 +440,14 @@ func doWriteData(client sip.Client, args []string, options []sip.RequestOption) 
 		fs.Usage()
 		return errors.New("--data is required")
 	}
-	data, err := hex.DecodeString(strings.TrimPrefix(strings.ReplaceAll(dataStr, " ", ""), "0x"))
-	if err != nil {
-		return fmt.Errorf("invalid --data: %w", err)
+	if raw {
+		data, err := decodeRawData(dataStr)
+		if err != nil {
+			return err
+		}
+		return writeData(client, os.Stdout, t.slaveIndex, t.slaveExtension, t.idn, data, options)
 	}
-	if err := client.WriteData(t.slaveIndex, t.slaveExtension, t.idn, data, options...); err != nil {
-		return err
-	}
-	fmt.Printf("wrote %d bytes to %s\n", len(data), sip.Idn(t.idn))
-	return nil
+	return writeIDN(client, os.Stdout, t.slaveIndex, t.slaveExtension, t.idn, dataStr, false, options)
 }
 
 func doBrowse(args []string) error {
@@ -348,7 +474,10 @@ func doBrowse(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), listen)
 	defer cancel()
+	return browseInterface(ctx, interfaceName)
+}
 
+func browseInterface(ctx context.Context, interfaceName string) error {
 	results, err := sip.Browse(ctx, interfaceName)
 	if err != nil {
 		return err
@@ -372,8 +501,8 @@ func doBrowse(args []string) error {
 
 func printBrowseResponse(count int, response *sip.BrowseResponse) {
 	fmt.Printf("device %d\n", count)
-	fmt.Printf("  DisplayName:    %s\n", string(response.DisplayName))
-	fmt.Printf("  HostName:       %s\n", string(response.HostName))
+	fmt.Printf("  DisplayName:    %s\n", sanitizeText(string(response.DisplayName)))
+	fmt.Printf("  HostName:       %s\n", sanitizeText(string(response.HostName)))
 	fmt.Printf("  NodeIdentifier: %s\n", formatMAC(response.NodeIdentifier))
 	fmt.Printf("  MacAddress:     %s\n", formatMAC(response.MacAddress))
 	fmt.Printf("  IPAddress:      %s\n", net.IP(response.IPAddress[:]))
@@ -493,14 +622,11 @@ func formatMAC(b [6]byte) string {
 	return net.HardwareAddr(b[:]).String()
 }
 
-func interfaceFlagUsage() string {
-	const description = "[mandatory] name of the network interface to broadcast on"
-
+func availableInterfaces() ([]string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return description + "; available interfaces: unavailable"
+		return nil, err
 	}
-
 	names := make([]string, 0, len(interfaces))
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagUp == 0 {
@@ -521,66 +647,49 @@ func interfaceFlagUsage() string {
 			}
 		}
 	}
+	sort.Strings(names)
+	return names, nil
+}
 
+func interfaceFlagUsage() string {
+	const description = "[mandatory] name of the network interface to broadcast on"
+	names, err := availableInterfaces()
+	if err != nil {
+		return description + "; available interfaces: unavailable"
+	}
 	if len(names) == 0 {
 		return description + "; available interfaces: none"
 	}
-	sort.Strings(names)
 	return description + "; available interfaces: " + strings.Join(names, ", ")
 }
 
-// parseIdn accepts a decimal or hexadecimal number or the Sercos notation
-// S-0-0095, P-0-0100.1.2 as printed by sip.Idn.String.
-func parseIdn(s string) (uint32, error) { // nolint:cyclop
+// idnAttribute selects sercos.ParseData's IDN parser with 4 data bytes, which accepts both S-0-0095 and S-0-0095.1.2.
+var idnAttribute = sercos.NewAttribute(sercos.WithFormat(sercos.IDN), sercos.WithLength(4))
+
+// parseIdn accepts a decimal or 0x-prefixed hexadecimal number, or Sercos notation
+// with optional S/P type and set and optional leading zeros, e.g. S30, S-95, or P-100.1.2.
+func parseIdn(s string) (uint32, error) {
 	s = strings.TrimSpace(s)
-	if u, err := strconv.ParseUint(s, 0, 32); err == nil {
+	var numeric string
+	base := 10
+	if len(s) > 2 && (strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X")) {
+		numeric = s[2:]
+		base = 16
+	} else {
+		numeric = s
+	}
+	if u, err := strconv.ParseUint(numeric, base, 32); err == nil {
 		return uint32(u), nil // nolint:gosec
 	}
-
-	parts := strings.Split(s, "-")
-	if len(parts) != 3 {
-		return 0, fmt.Errorf("invalid IDN %q", s)
+	data, err := sercos.ParseData(idnAttribute, s)
+	if err != nil {
+		return 0, err
 	}
-	var idn uint32
-	switch strings.ToUpper(parts[0]) {
-	case "S":
-	case "P":
-		idn |= 0x8000
-	default:
-		return 0, fmt.Errorf("invalid IDN %q: type must be S or P", s)
-	}
-	set, err := strconv.ParseUint(parts[1], 10, 8)
-	if err != nil || set > 7 {
-		return 0, fmt.Errorf("invalid IDN %q: parameter set must be 0..7", s)
-	}
-	idn |= uint32(set) << 12
-
-	// block number, optionally followed by .structureInstance.structureElement
-	nums := strings.Split(parts[2], ".")
-	if len(nums) != 1 && len(nums) != 3 {
-		return 0, fmt.Errorf("invalid IDN %q", s)
-	}
-	block, err := strconv.ParseUint(nums[0], 10, 16)
-	if err != nil || block > 0x0fff {
-		return 0, fmt.Errorf("invalid IDN %q: block number must be 0..4095", s)
-	}
-	idn |= uint32(block)
-	if len(nums) == 3 {
-		si, err := strconv.ParseUint(nums[1], 10, 8)
-		if err != nil {
-			return 0, fmt.Errorf("invalid IDN %q: invalid structure instance", s)
-		}
-		se, err := strconv.ParseUint(nums[2], 10, 8)
-		if err != nil {
-			return 0, fmt.Errorf("invalid IDN %q: invalid structure element", s)
-		}
-		idn |= uint32(si)<<24 | uint32(se)<<16
-	}
-	return idn, nil
+	return binary.LittleEndian.Uint32(data), nil
 }
 
-func validElements(ve uint16) string {
-	names := []struct {
+func validElementNames(ve uint16) []string {
+	elements := [...]struct {
 		mask uint16
 		name string
 	}{
@@ -592,28 +701,44 @@ func validElements(ve uint16) string {
 		{sip.ElmMax, "Max"},
 		{sip.ElmData, "Data"},
 	}
-	set := []string{}
-	for _, n := range names {
-		if ve&n.mask == n.mask {
-			set = append(set, n.name)
+	names := make([]string, 0, len(elements))
+	for _, element := range elements {
+		if ve&element.mask == element.mask {
+			names = append(names, element.name)
 		}
 	}
-	if len(set) == 0 {
-		return "none"
-	}
-	return strings.Join(set, "|")
+	return names
 }
 
-func printData(data []byte) {
-	fmt.Printf("DataLength:    %d\n", len(data))
+func validElements(ve uint16) string {
+	names := validElementNames(ve)
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, "|")
+}
+
+// formatLimit formats an 8-byte Min/Max field using only the attribute's value length.
+func formatLimit(v [8]byte, attribute sercos.Attribute) string {
+	return sercos.Data(v[:attribute.Length()]).String(attribute)
+}
+
+func printMinMax(w io.Writer, width int, minRaw, maxRaw [8]byte, valid uint16, attribute sercos.Attribute) {
+	if valid&sip.ElmMin != 0 {
+		writeElements(w, width, "Min", []string{formatLimit(minRaw, attribute)})
+		writeRaw(w, width, "Min (raw)", minRaw[:])
+	}
+	if valid&sip.ElmMax != 0 {
+		writeElements(w, width, "Max", []string{formatLimit(maxRaw, attribute)})
+		writeRaw(w, width, "Max (raw)", maxRaw[:])
+	}
+}
+
+func printData(w io.Writer, width int, data []byte, attribute sercos.Attribute) {
+	fmt.Fprintf(w, "DataLength:    %d\n", len(data))
 	if len(data) == 0 {
 		return
 	}
-	fmt.Printf("Data (hex):    %s\n", hex.EncodeToString(data))
-	fmt.Printf("Data (text):   %s\n", strings.Map(func(r rune) rune {
-		if r < 0x20 || r > 0x7e {
-			return '.'
-		}
-		return r
-	}, string(data)))
+	writeElements(w, width, "Data", sercos.Data(data).Strings(attribute))
+	writeRaw(w, width, "Data (raw)", data)
 }

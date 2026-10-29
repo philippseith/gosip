@@ -28,6 +28,8 @@ To ping a device at its S/IP address:
 gosip --address 192.168.1.50:35021 ping
 ```
 
+The `--address` (`-a`) flag accepts a host or IP without a port; it defaults to the S/IP port `35021`. Specify `host:port` to use a different port.
+
 To read the full data set for an IDN, including metadata and values:
 
 ```bash
@@ -40,10 +42,12 @@ To read only the raw data bytes of an IDN:
 gosip --address 192.168.1.50:35021 readonlydata --idn 0x100A
 ```
 
-To write raw parameter data as a hexadecimal byte string:
+Read output includes formatted values and spaced raw bytes. Long values wrap to the terminal width; wrapped raw rows show hexadecimal byte offsets, and wrapped formatted rows show decimal element indexes. Indexes are omitted when values fit on one row.
+
+Formatted writes accept values as printed by `readonlydata`, with list elements separated by spaces. To write raw parameter data as a hexadecimal byte string, use `--raw`:
 
 ```bash
-gosip --address 192.168.1.50:35021 writedata --idn S-0-0095.0.0 --data 00112233
+gosip --address 192.168.1.50:35021 writedata --idn S-0-0095.0.0 --raw --data 00112233
 ```
 
 To identify a device on a specific network interface:
@@ -59,6 +63,80 @@ gosip setip --interface eth0 --node 00:11:22:33:44:55 --ip 192.168.1.100 --gatew
 ```
 
 The `--interface` flag selects the local NIC used for the broadcast, and `--node` is the device node identifier to target.
+
+## Interactive prompt
+
+Running `gosip` without a command in a terminal opens the read/write prompt. At `gosip>`, use `a host[:port]` (or `address host[:port]`) to switch the S/IP target; a missing port defaults to 35021. Use `b [interface]` to browse devices, choosing an interface if omitted. Up and Down recall up to 500 in-memory lines; Left/Right/Home/End move the cursor, Delete and Backspace edit at the cursor, and Ctrl-A/B/E/F provide cursor movement. Bracketed terminal paste inserts the pasted text as one line, converting line breaks and tabs to spaces. History is separate for the `gosip>` and `idn>` prompts and is not saved to disk.
+
+Example session:
+```
+Enter: [command] IDN, e.g. ro S-0-0032.0.0. Without command, re is used.
+  re, r  readeverything   read description, data state and data of an IDN
+  ro     readonlydata     read only the data of an IDN
+  rd     readdescription  read only the description of an IDN
+  rs     readdatastate    read only the data state of an IDN
+  w      write            write formatted data: w IDN value [value...]
+  wr     write raw        write raw hex bytes: wr IDN 0a1b2c3d
+  a      address          set the target S/IP address: a host[:port]
+  b      browse           list devices answering a UDP Browse: b [interface]; without interface, choose one
+  s      status           show the negotiated BusyTimeout and LeaseTimeout
+  h, ?   help             show this help
+  q      quit             quit the prompt
+Type h, ?, or help to show this help. q, quit, Esc, or Ctrl-D quits. Up/Down recall history; cursor keys edit; bracketed paste inserts text.
+gosip> a 192.168.112.34
+Address set to 192.168.112.34:35021
+gosip> r s30
+IDN:           S-0-0030.0.0
+ValidElements: 0x0047 (DataState|Name|Attribute|Data)
+DataState:     0x0000
+Attribute:     0x70440001
+Name:          Electronic type plate DEVICE: Manufacturer software version
+MaxListLength: 56
+DataLength:    25
+Data:          FWA-XD1-AXS-V-0702N-NN-00
+Data (raw):    46 57 41 2d 58 44 31 2d 41 58 53 2d 56 2d 30 37 30 32 4e 2d 4e 4e 2d 30 30
+gosip> 
+```
+
+## MCP stdio server
+
+Run `gosip mcp` to expose the CLI operations as MCP tools over standard input and output. 
+
+- Pass `address` in every device-tool request (an IPv4 address with an optional port, default 35021); `gosip mcp --address` is rejected. 
+- The address is parsed strictly: dotted-decimal IPv4 without leading zeros, optionally followed by `:port`; host names, IPv6 and an empty host or port are rejected, and every spelling of the same endpoint shares one client. 
+- At most 1024 clients are cached; beyond that the least recently used idle client is closed, and if all are in use the request fails. 
+- Tool requests may only connect to port 35021; pass `gosip mcp --allow-port <port>` (repeatable or comma separated) to permit additional ports, for example a simulator on another port. 
+- A request may only connect to a device that answers a UDP Browse sent on the one interface the operating system routes to its address; this is checked before the first connection and again whenever an idle or closed client was removed. An address is always checked the first time. After a failed check, an address that has already failed is not checked again for 1 second, doubling after each further consecutive failure (of any address) up to 5 minutes, and a successful check resets this; such a request fails immediately without a broadcast. Addresses that did not fail before and addresses that already have a client are not affected. 
+- Devices behind a router and devices or simulators that do not answer a UDP Browse (for example the TCP-only `sip` server) need `gosip mcp --allow-all-hosts`, which disables only this check; the address must still be an IPv4 literal. 
+- The tools are `ping`, `readeverything`, `readonlydata`, `readdescription`, `readdatastate`, `writedata`, `browse`, `identify`, and `setip`. Results are structured JSON. 
+- The server keeps one client per normalized device address and closes idle clients after twice their negotiated lease timeout (20 seconds before a lease is negotiated, unless `--leasetimeout` overrides it).
+- Broadcast tools use UDP; `browse` without `interface` lists available interfaces, while `identify` and `setip` require it. Their `listen` duration defaults to 3 seconds and is clamped to 10 seconds. A call collects at most 1024 responses and errors together; if more arrive, listening stops early and the result has `"truncated": true`.
+- Text that devices supply (display and host names, IDN names and units, text data) is untrusted. 
+- `gosip` replaces control characters and invalid UTF-8 in it with `.` before printing it to a terminal; the MCP server returns it unchanged, but the server instructions, the tool descriptions and the output schemas mark it as untrusted data that the model must not treat as instructions.
+
+## Parsing formatted Sercos data
+
+`sercos.ParseData(attr, s)` reverses `Data.String(attr)`. `sercos.ParseDatas(attr, ss)` parses the elements returned by `Data.Strings(attr)` and concatenates their bytes. `sercos.Data` also implements `fmt.Scanner` for `b`, `u`, `d`, `x`, `X`, `s`, `i`, `f`, and `t`.
+
+For IDNs, compact `S30` and `s30` forms parse as `S-0-0030`.
+
+```go
+func parseAndScan() error {
+	attr := sercos.Attribute(0x03110001)
+	data, err := sercos.ParseData(attr, "1.000")
+	if err != nil {
+		return err
+	}
+	var scanned sercos.Data
+	if _, err = fmt.Sscanf("0b0000.0000.0000.0010", "%b", &scanned); err != nil {
+		return err
+	}
+	fmt.Printf("parsed=%v scanned=%v\n", []byte(data), []byte(scanned))
+	return nil
+}
+```
+
+For `b`, `u`, `d`, `x`, `X`, `i`, and `f`, scanning reuses an existing `Data` length of 1, 2, 4, or 8 bytes; use an empty `Data` to infer the length from the token. `s` and `t` ignore the current length. `fmt` width keeps its standard meaning as a maximum input-rune count, not a byte length.
 
 ## Protocol limits
 

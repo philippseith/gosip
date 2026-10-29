@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/joomcode/errorx"
+	"github.com/philippseith/gosip/sercos"
 )
 
 // Conn is a SIP client connection. It can be used to read and write SERCOS
@@ -309,7 +310,7 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {
 	if err != nil {
-		return fmt.Errorf("%w %v %v %v", err, slaveIndex, slaveExtension, Idn(idn))
+		return fmt.Errorf("%w %v %v %v", err, slaveIndex, slaveExtension, sercos.Idn(idn))
 	}
 	return err
 }
