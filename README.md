@@ -28,6 +28,8 @@ To ping a device at its S/IP address:
 gosip --address 192.168.1.50:35021 ping
 ```
 
+The `--address` (`-a`) flag accepts a host or IP without a port; it defaults to the S/IP port `35021`. Specify `host:port` to use a different port.
+
 To read the full data set for an IDN, including metadata and values:
 
 ```bash

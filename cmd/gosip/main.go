@@ -152,7 +152,7 @@ func parseGlobalFlags(args []string) (globalFlags, *pflag.FlagSet, error) {
 	fs := pflag.NewFlagSet("gosip", pflag.ContinueOnError)
 	fs.SetInterspersed(false)
 	fs.SortFlags = false
-	fs.StringVarP(&g.address, "address", "a", fmt.Sprintf("127.0.0.1:%d", sip.Port), "[optional] address of the S/IP server")
+	fs.StringVarP(&g.address, "address", "a", fmt.Sprintf("127.0.0.1:%d", sip.Port), "[optional] S/IP server address (port defaults to 35021)")
 	fs.IntVarP(&g.busyTimeout, "busytimeout", "b", 0, "[optional] busy timeout in ms (default: server default)")
 	fs.IntVarP(&g.leaseTimeout, "leasetimeout", "l", 0, "[optional] lease timeout in ms (default: server default)")
 	fs.BoolVarP(&g.keepAlive, "keepalive", "k", false, "[optional] send keep alive pings (default: false)")
@@ -182,7 +182,33 @@ Run "gosip <command> -h" for the flags of a command.
 `)
 	}
 	err := fs.Parse(args)
+	if err == nil {
+		g.address = addressWithDefaultPort(g.address)
+	}
 	return g, fs, err
+}
+
+func addressWithDefaultPort(address string) string {
+	if address == "" {
+		return address
+	}
+	port := strconv.Itoa(sip.Port)
+	if _, _, err := net.SplitHostPort(address); err == nil {
+		return address
+	}
+	if net.ParseIP(address) != nil {
+		return net.JoinHostPort(address, port)
+	}
+	if len(address) >= 2 && address[0] == '[' && address[len(address)-1] == ']' {
+		host := address[1 : len(address)-1]
+		if net.ParseIP(host) != nil {
+			return net.JoinHostPort(host, port)
+		}
+	}
+	if !strings.Contains(address, ":") {
+		return net.JoinHostPort(address, port)
+	}
+	return address
 }
 
 // target holds the flags shared by all IDN addressed commands.
