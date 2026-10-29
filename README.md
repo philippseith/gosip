@@ -42,6 +42,8 @@ To read only the raw data bytes of an IDN:
 gosip --address 192.168.1.50:35021 readonlydata --idn 0x100A
 ```
 
+Read output includes formatted values and spaced raw bytes. Long values wrap to the terminal width; wrapped raw rows show hexadecimal byte offsets, and wrapped formatted rows show decimal element indexes. Indexes are omitted when values fit on one row.
+
 To write raw parameter data as a hexadecimal byte string:
 
 ```bash

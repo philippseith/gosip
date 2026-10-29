@@ -333,10 +333,11 @@ func readEverything(client sip.Client, slaveIndex, slaveExtension int, idn uint3
 	if resp.ValidElements&sip.ElmUnit != 0 {
 		fmt.Printf("Unit:          %s\n", string(resp.Unit))
 	}
-	printMinMax(resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
+	width := terminalWidth()
+	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
 	if resp.ValidElements&sip.ElmData != 0 {
-		printData(resp.Data, sercos.Attribute(resp.Attribute))
+		printData(os.Stdout, width, resp.Data, sercos.Attribute(resp.Attribute))
 	}
 	return nil
 }
@@ -348,7 +349,7 @@ func readOnlyData(client sip.Client, slaveIndex, slaveExtension int, idn uint32,
 	}
 	fmt.Printf("IDN:       %s\n", sercos.Idn(idn))
 	fmt.Printf("Attribute: 0x%08x\n", resp.Attribute)
-	printData(resp.Data, sercos.Attribute(resp.Attribute))
+	printData(os.Stdout, terminalWidth(), resp.Data, sercos.Attribute(resp.Attribute))
 	return nil
 }
 
@@ -368,7 +369,8 @@ func readDescription(client sip.Client, slaveIndex, slaveExtension int, idn uint
 	if resp.ValidElements&sip.ElmUnit != 0 {
 		fmt.Printf("Unit:          %s\n", string(resp.Unit))
 	}
-	printMinMax(resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
+	width := terminalWidth()
+	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
 	return nil
 }
@@ -691,22 +693,22 @@ func formatLimit(v [8]byte, attribute sercos.Attribute) string {
 	return sercos.Data(v[:attribute.Length()]).String(attribute)
 }
 
-func printMinMax(minRaw, maxRaw [8]byte, valid uint16, attribute sercos.Attribute) {
+func printMinMax(w io.Writer, width int, minRaw, maxRaw [8]byte, valid uint16, attribute sercos.Attribute) {
 	if valid&sip.ElmMin != 0 {
-		fmt.Printf("Min:           %s\n", formatLimit(minRaw, attribute))
-		fmt.Printf("Min (raw):     %s\n", hex.EncodeToString(minRaw[:]))
+		writeElements(w, width, "Min", []string{formatLimit(minRaw, attribute)})
+		writeRaw(w, width, "Min (raw)", minRaw[:])
 	}
 	if valid&sip.ElmMax != 0 {
-		fmt.Printf("Max:           %s\n", formatLimit(maxRaw, attribute))
-		fmt.Printf("Max (raw):     %s\n", hex.EncodeToString(maxRaw[:]))
+		writeElements(w, width, "Max", []string{formatLimit(maxRaw, attribute)})
+		writeRaw(w, width, "Max (raw)", maxRaw[:])
 	}
 }
 
-func printData(data []byte, attribute sercos.Attribute) {
-	fmt.Printf("DataLength:    %d\n", len(data))
+func printData(w io.Writer, width int, data []byte, attribute sercos.Attribute) {
+	fmt.Fprintf(w, "DataLength:    %d\n", len(data))
 	if len(data) == 0 {
 		return
 	}
-	fmt.Printf("Data:          %s\n", strings.Join(sercos.Data(data).Strings(attribute), ", "))
-	fmt.Printf("Data (raw):    %s\n", hex.EncodeToString(data))
+	writeElements(w, width, "Data", sercos.Data(data).Strings(attribute))
+	writeRaw(w, width, "Data (raw)", data)
 }
