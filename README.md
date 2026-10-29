@@ -68,6 +68,10 @@ The `--interface` flag selects the local NIC used for the broadcast, and `--node
 
 Running `gosip` without a command in a terminal opens the read/write prompt. Up and Down recall up to 500 in-memory lines; Left/Right/Home/End move the cursor, Delete and Backspace edit at the cursor, and Ctrl-A/B/E/F provide cursor movement. Bracketed terminal paste inserts the pasted text as one line, converting line breaks and tabs to spaces. History is separate for the `gosip>` and `idn>` prompts and is not saved to disk.
 
+## MCP stdio server
+
+Run `gosip mcp` to expose the CLI operations as MCP tools over standard input and output. Set `--address` and connection flags before `mcp`; device-addressed tools may override the default with an optional `address` field. The tools are `ping`, `readeverything`, `readonlydata`, `readdescription`, `readdatastate`, `writedata`, `browse`, `identify`, and `setip`. Results are structured JSON; the server keeps one client per normalized device address and closes idle clients after twice their negotiated lease timeout (20 seconds before a lease is negotiated, unless `--leasetimeout` overrides it). Broadcast tools use UDP and require an `interface` field.
+
 ## Parsing formatted Sercos data
 
 `sercos.ParseData(attr, s)` reverses `Data.String(attr)`. `sercos.ParseDatas(attr, ss)` parses the elements returned by `Data.Strings(attr)` and concatenates their bytes. `sercos.Data` also implements `fmt.Scanner` for `b`, `u`, `d`, `x`, `X`, `s`, `i`, `f`, and `t`.

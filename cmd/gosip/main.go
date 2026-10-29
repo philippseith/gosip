@@ -20,6 +20,8 @@
 //	identify         Broadcast an Identify request
 //	setip            Broadcast a SetIP request
 //
+//	mcp              Serve the CLI tools over MCP stdio
+//
 // Without a command (terminal only), gosip prompts for read and write lines, e.g.
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
 // "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. The editor supports
@@ -107,6 +109,32 @@ func run(args []string) error { // nolint:cyclop
 		return doSetIP(cmdArgs)
 	}
 
+	dial := newDialer(g)
+	reqOptions := []sip.RequestOption{sip.WithRetries(g.retries)}
+	if g.timeout > 0 {
+		reqOptions = append(reqOptions, sip.WithTimeout(g.timeout))
+	}
+	defaultLease := 10 * time.Second
+	if g.leaseTimeout > 0 {
+		defaultLease = time.Duration(g.leaseTimeout) * time.Millisecond
+	}
+	if cmd == "mcp" {
+		return doMCP(cmdArgs, dial, g.address, defaultLease, reqOptions)
+	}
+
+	client, err := dial(g.address)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	if menu {
+		return runPrompt(client, reqOptions)
+	}
+	return runClientCommand(client, cmd, cmdArgs, reqOptions, fs)
+}
+
+func newDialer(g globalFlags) func(address string) (sip.Client, error) {
 	connOptions := []sip.ConnOption{}
 	if g.busyTimeout > 0 {
 		connOptions = append(connOptions, sip.WithBusyTimeout(g.busyTimeout))
@@ -125,22 +153,9 @@ func run(args []string) error { // nolint:cyclop
 		}
 		return c, nil
 	}))
-
-	client, err := sip.NewClient("tcp4", g.address, connOptions...)
-	if err != nil {
-		return err
+	return func(address string) (sip.Client, error) {
+		return sip.NewClient("tcp4", address, connOptions...)
 	}
-	defer func() { _ = client.Close() }()
-
-	reqOptions := []sip.RequestOption{sip.WithRetries(g.retries)}
-	if g.timeout > 0 {
-		reqOptions = append(reqOptions, sip.WithTimeout(g.timeout))
-	}
-
-	if menu {
-		return runPrompt(client, reqOptions)
-	}
-	return runClientCommand(client, cmd, cmdArgs, reqOptions, fs)
 }
 
 func runClientCommand(client sip.Client, cmd string, cmdArgs []string, reqOptions []sip.RequestOption, fs *pflag.FlagSet) error {
@@ -193,6 +208,7 @@ commands:
   browse           broadcast a Browse request and list the answering devices
   identify         broadcast an Identify request to a device
   setip            broadcast a SetIP request to configure a device
+  mcp              serve the CLI tools over MCP stdio
 
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
@@ -633,8 +649,8 @@ func parseIdn(s string) (uint32, error) {
 	return binary.LittleEndian.Uint32(data), nil
 }
 
-func validElements(ve uint16) string {
-	names := []struct {
+func validElementNames(ve uint16) []string {
+	elements := [...]struct {
 		mask uint16
 		name string
 	}{
@@ -646,16 +662,21 @@ func validElements(ve uint16) string {
 		{sip.ElmMax, "Max"},
 		{sip.ElmData, "Data"},
 	}
-	set := []string{}
-	for _, n := range names {
-		if ve&n.mask == n.mask {
-			set = append(set, n.name)
+	names := make([]string, 0, len(elements))
+	for _, element := range elements {
+		if ve&element.mask == element.mask {
+			names = append(names, element.name)
 		}
 	}
-	if len(set) == 0 {
+	return names
+}
+
+func validElements(ve uint16) string {
+	names := validElementNames(ve)
+	if len(names) == 0 {
 		return "none"
 	}
-	return strings.Join(set, "|")
+	return strings.Join(names, "|")
 }
 
 // formatLimit formats an 8-byte Min/Max field using only the attribute's value length.

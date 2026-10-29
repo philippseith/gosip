@@ -78,10 +78,10 @@ func writeData(client dataClient, out io.Writer, slaveIndex, slaveExtension int,
 	return err
 }
 
-func writeIDN(client dataClient, out io.Writer, slaveIndex, slaveExtension int, idn uint32, input string, raw bool, options []sip.RequestOption) error {
+func encodeWrite(client dataClient, slaveIndex, slaveExtension int, idn uint32, input string, raw bool, options []sip.RequestOption) ([]byte, error) {
 	current, err := client.ReadOnlyData(slaveIndex, slaveExtension, idn, options...)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	attr := sercos.Attribute(current.Attribute)
 	var data []byte
@@ -91,9 +91,17 @@ func writeIDN(client dataClient, out io.Writer, slaveIndex, slaveExtension int, 
 		data, err = encodeFormattedData(attr, input)
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := checkWriteLength(attr, len(current.Data), data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func writeIDN(client dataClient, out io.Writer, slaveIndex, slaveExtension int, idn uint32, input string, raw bool, options []sip.RequestOption) error {
+	data, err := encodeWrite(client, slaveIndex, slaveExtension, idn, input, raw, options)
+	if err != nil {
 		return err
 	}
 	return writeData(client, out, slaveIndex, slaveExtension, idn, data, options)
