@@ -25,8 +25,10 @@ func (a Attribute) Length() int {
 	return 1 << ((uint32(a) >> 16) & 3)
 }
 
+// Format returns the data display format from bits 22-20. Bit 23 is reserved and ignored, so the eight formats
+// Bin..Time are all the values there are.
 func (a Attribute) Format() Format {
-	return Format((uint32(a) & 0x00F00000) >> 20)
+	return Format((uint32(a) & 0x00700000) >> 20)
 }
 
 func (a Attribute) DecimalPlaces() int {
@@ -67,7 +69,7 @@ func WithLength(length int) AttributeOption {
 
 func WithFormat(format Format) AttributeOption {
 	return func(a *Attribute) Attribute {
-		*a = Attribute(uint32(*a)&^0x00F00000 | uint32(format)&0xF<<20) // nolint:gosec
+		*a = Attribute(uint32(*a)&^0x00700000 | uint32(format)&0x7<<20) // nolint:gosec
 		return *a
 	}
 }

@@ -774,7 +774,10 @@ func handleAddressLine(line string, client *sip.Client, address *string, reporte
 	if err != nil {
 		return true, err
 	}
-	newAddress := addressWithDefaultPort(requestedAddress)
+	newAddress, err := addressWithDefaultPort(requestedAddress)
+	if err != nil {
+		return true, err
+	}
 	if newAddress == *address {
 		fmt.Fprintf(os.Stdout, "Address already set to %s\n", *address)
 		return true, nil

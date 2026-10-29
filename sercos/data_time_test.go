@@ -26,7 +26,7 @@ func TestDataTimes(t *testing.T) {
 		t.Errorf("Times() = %v, want %v", got, want)
 	}
 
-	if got := data[:9].Times(); got != nil {
-		t.Errorf("Times() = %v, want nil for non-divisible data length", got)
+	if got := data[:9].Times(); len(got) != 1 || got[0] != "invalid length 9 for 8-byte elements" {
+		t.Errorf("Times() = %v, want an invalid length message for non-divisible data length", got)
 	}
 }

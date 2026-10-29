@@ -36,8 +36,8 @@ func TestDataIdns(t *testing.T) {
 		t.Errorf("Idns(2) = %v, want %v", got, want)
 	}
 
-	if got := (Data{0x01, 0x80, 0x02}).Idns(2); got != nil {
-		t.Errorf("Idns(2) = %v, want nil for non-divisible data length", got)
+	if got := (Data{0x01, 0x80, 0x02}).Idns(2); len(got) != 1 || got[0] != "invalid length 3 for 2-byte elements" {
+		t.Errorf("Idns(2) = %v, want an invalid length message for non-divisible data length", got)
 	}
 	if got := data.Idns(3); len(got) != 1 || got[0] != "invalid idn length 3" {
 		t.Errorf("Idns(3) = %v, want invalid length message", got)

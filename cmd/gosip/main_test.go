@@ -34,6 +34,25 @@ func TestParseGlobalFlagsAddressDefaultPort(t *testing.T) {
 	}
 }
 
+func TestParseGlobalFlagsRejectsEmptyAddressParts(t *testing.T) {
+	tests := []struct {
+		address string
+		want    string
+	}{
+		{address: "device:", want: "no port"},
+		{address: "192.168.0.5:", want: "no port"},
+		{address: ":35021", want: "no host"},
+		{address: ":", want: "no host"},
+		{address: "", want: "empty"},
+	}
+	for _, tt := range tests {
+		_, _, err := parseGlobalFlags([]string{"--address", tt.address, "ping"})
+		if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "--address") {
+			t.Errorf("parseGlobalFlags(--address %q) error = %v, want an --address error containing %q", tt.address, err, tt.want)
+		}
+	}
+}
+
 func TestDoSetIPMissingArgsDoesNotPanic(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -176,6 +195,50 @@ func TestWriteElements(t *testing.T) {
 				t.Errorf("writeElements() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSanitizeText(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "plain", input: "Drive 1 (äöü ✓)", want: "Drive 1 (äöü ✓)"},
+		{name: "empty", input: "", want: ""},
+		{name: "escape sequence", input: "\x1b[2J\x1b]0;pwn\x07hi", want: ".[2J.]0;pwn.hi"},
+		{name: "newline and carriage return", input: "a\r\nb", want: "a..b"},
+		{name: "delete", input: "a\x7fb", want: "a.b"},
+		{name: "C1 control as UTF-8", input: "a\u009bb", want: "a.b"},
+		{name: "C1 control as a bare byte", input: "a\x9bb", want: "a.b"},
+		{name: "truncated UTF-8", input: "a\xe2\x82", want: "a.."},
+		{name: "literal replacement character", input: "a\ufffdb", want: "a\ufffdb"},
+	}
+	for _, tc := range tests {
+		if got := sanitizeText(tc.input); got != tc.want {
+			t.Errorf("%s: sanitizeText(%q) = %q, want %q", tc.name, tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestPrintDataSanitizesText(t *testing.T) {
+	var buf bytes.Buffer
+	printData(&buf, 80, []byte("\x1b[2Jhi\n"), sercos.NewAttribute(sercos.WithFormat(sercos.Text), sercos.WithLength(1)))
+	const want = "DataLength:    7\nData:          .[2Jhi.\nData (raw):    1b 5b 32 4a 68 69 0a\n"
+	if got := buf.String(); got != want {
+		t.Errorf("printData() = %q, want %q", got, want)
+	}
+}
+
+func TestWriteElementsSanitizesWrappedGrid(t *testing.T) {
+	elems := []string{"\x1b[31m", "ok", "\n"}
+	var buf bytes.Buffer
+	writeElements(&buf, 20, "Data", elems)
+	if strings.ContainsAny(buf.String(), "\x1b\r") || strings.Count(buf.String(), "\n") != 3 {
+		t.Errorf("writeElements() output %q contains a control character besides the 3 line breaks", buf.String())
+	}
+	if elems[0] != "\x1b[31m" || elems[2] != "\n" {
+		t.Error("writeElements modified its argument")
 	}
 }
 

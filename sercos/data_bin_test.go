@@ -36,8 +36,8 @@ func TestDataBins(t *testing.T) {
 		t.Errorf("Bins(2) = %v, want %v", got, want)
 	}
 
-	if got := (Data{0x01, 0x02, 0x03}).Bins(2); got != nil {
-		t.Errorf("Bins(2) = %v, want nil for non-divisible data length", got)
+	if got := (Data{0x01, 0x02, 0x03}).Bins(2); len(got) != 1 || got[0] != "invalid length 3 for 2-byte elements" {
+		t.Errorf("Bins(2) = %v, want an invalid length message for non-divisible data length", got)
 	}
 	if got := data.Bins(3); len(got) != 1 || got[0] != "invalid bin length 3" {
 		t.Errorf("Bins(3) = %v, want invalid length message", got)

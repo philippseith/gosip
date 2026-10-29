@@ -22,7 +22,10 @@
 //
 //	mcp              Serve the CLI tools over MCP stdio; address is passed per request, --address is rejected
 //
-// MCP device requests require an address in each tool call; --address is not used by mcp.
+// MCP device requests require an address in each tool call; --address is not used by mcp. Requests may only
+// connect to port 35021 unless mcp is started with --allow-port, and only to IPv4 addresses (host names are never
+// accepted) of devices that answer a Browse on the interface routing to them unless mcp is started with
+// --allow-all-hosts.
 //
 // Without a command (terminal only), gosip prompts for read and write lines, e.g.
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
@@ -216,7 +219,7 @@ commands:
 
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
-The mcp command requires an address in every device tool request and rejects --address.
+The mcp command requires an address in every device tool request and rejects --address; the address must be an IPv4 address with an optional port, tool requests may only use port 35021 unless "mcp --allow-port <port>" widens it, and only devices that answer a UDP Browse on the interface routing to them are used unless "mcp --allow-all-hosts" is given.
 The interactive prompt accepts "a host[:port]" (or "address host[:port]") to switch the S/IP target and "b [interface]" to browse; omit the interface to choose from available IPv4 interfaces.
 
 
@@ -225,25 +228,40 @@ Run "gosip <command> -h" for the flags of a command.
 	}
 	err := fs.Parse(args)
 	if err == nil {
-		g.address = addressWithDefaultPort(g.address)
+		if g.address, err = addressWithDefaultPort(g.address); err != nil {
+			err = fmt.Errorf("invalid --address: %w", err)
+		}
 	}
 	return g, fs, err
 }
 
-func addressWithDefaultPort(address string) string {
+// addressWithDefaultPort adds the default S/IP port to an address without one. An empty address, host or port
+// is rejected: net.SplitHostPort accepts "host:" and ":35021", but the first dials with no port and the second
+// the local machine.
+func addressWithDefaultPort(address string) (string, error) {
 	if address == "" {
-		return address
+		return "", errors.New("the address is empty")
 	}
+	if host, portText, err := net.SplitHostPort(address); err == nil {
+		if host == "" {
+			return "", fmt.Errorf("address %q has no host", address)
+		}
+		if portText == "" {
+			return "", fmt.Errorf("address %q has no port; omit the colon to use port %d", address, sip.Port)
+		}
+		return address, nil
+	}
+	return joinDefaultPort(address), nil
+}
+
+// joinDefaultPort adds the default port to an address that SplitHostPort rejects, mostly because it has no port.
+func joinDefaultPort(address string) string {
 	port := strconv.Itoa(sip.Port)
-	if _, _, err := net.SplitHostPort(address); err == nil {
-		return address
-	}
 	if net.ParseIP(address) != nil {
 		return net.JoinHostPort(address, port)
 	}
 	if len(address) >= 2 && address[0] == '[' && address[len(address)-1] == ']' {
-		host := address[1 : len(address)-1]
-		if net.ParseIP(host) != nil {
+		if host := address[1 : len(address)-1]; net.ParseIP(host) != nil {
 			return net.JoinHostPort(host, port)
 		}
 	}
@@ -351,10 +369,10 @@ func readEverything(client sip.Client, slaveIndex, slaveExtension int, idn uint3
 		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
 	}
 	if resp.ValidElements&sip.ElmName != 0 {
-		fmt.Printf("Name:          %s\n", string(resp.Name))
+		fmt.Printf("Name:          %s\n", sanitizeText(string(resp.Name)))
 	}
 	if resp.ValidElements&sip.ElmUnit != 0 {
-		fmt.Printf("Unit:          %s\n", string(resp.Unit))
+		fmt.Printf("Unit:          %s\n", sanitizeText(string(resp.Unit)))
 	}
 	width := terminalWidth()
 	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
@@ -387,10 +405,10 @@ func readDescription(client sip.Client, slaveIndex, slaveExtension int, idn uint
 		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
 	}
 	if resp.ValidElements&sip.ElmName != 0 {
-		fmt.Printf("Name:          %s\n", string(resp.Name))
+		fmt.Printf("Name:          %s\n", sanitizeText(string(resp.Name)))
 	}
 	if resp.ValidElements&sip.ElmUnit != 0 {
-		fmt.Printf("Unit:          %s\n", string(resp.Unit))
+		fmt.Printf("Unit:          %s\n", sanitizeText(string(resp.Unit)))
 	}
 	width := terminalWidth()
 	printMinMax(os.Stdout, width, resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
@@ -483,8 +501,8 @@ func browseInterface(ctx context.Context, interfaceName string) error {
 
 func printBrowseResponse(count int, response *sip.BrowseResponse) {
 	fmt.Printf("device %d\n", count)
-	fmt.Printf("  DisplayName:    %s\n", string(response.DisplayName))
-	fmt.Printf("  HostName:       %s\n", string(response.HostName))
+	fmt.Printf("  DisplayName:    %s\n", sanitizeText(string(response.DisplayName)))
+	fmt.Printf("  HostName:       %s\n", sanitizeText(string(response.HostName)))
 	fmt.Printf("  NodeIdentifier: %s\n", formatMAC(response.NodeIdentifier))
 	fmt.Printf("  MacAddress:     %s\n", formatMAC(response.MacAddress))
 	fmt.Printf("  IPAddress:      %s\n", net.IP(response.IPAddress[:]))

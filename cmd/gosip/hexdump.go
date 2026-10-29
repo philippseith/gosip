@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/term"
@@ -56,8 +58,52 @@ func writeRaw(w io.Writer, width int, label string, data []byte) {
 	}
 }
 
-// writeElements prints formatted element strings in the same grid layout.
+// sanitizeText replaces what could act as a terminal command or spoof the layout in text that a device supplied:
+// control characters (C0, 0x7f, C1, including newline and escape) and bytes that are not valid UTF-8 (a terminal
+// in an 8-bit mode would read them as C1 controls). Each is replaced by '.', as the raw hex dumps show it.
+// The raw bytes stay available in the hex dump.
+func sanitizeText(s string) string {
+	clean := true
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if unicode.IsControl(r) || r == utf8.RuneError && size == 1 {
+			clean = false
+			break
+		}
+		i += size
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if unicode.IsControl(r) || r == utf8.RuneError && size == 1 {
+			b.WriteByte('.')
+		} else {
+			b.WriteString(s[i : i+size])
+		}
+		i += size
+	}
+	return b.String()
+}
+
+// writeElements prints formatted element strings in the same grid layout. The elements are sanitized with
+// sanitizeText because they can contain device text.
 func writeElements(w io.Writer, width int, label string, elems []string) {
+	var safe []string
+	for i, elem := range elems {
+		if clean := sanitizeText(elem); clean != elem {
+			if safe == nil {
+				safe = slices.Clone(elems)
+			}
+			safe[i] = clean
+		}
+	}
+	if safe != nil {
+		elems = safe
+	}
 	joined := strings.Join(elems, elemSep)
 	if len(elems) == 0 || labelWidth+len(joined) <= width {
 		fmt.Fprintf(w, "%-*s%s\n", labelWidth, label+":", joined)

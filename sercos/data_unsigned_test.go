@@ -54,8 +54,14 @@ func TestDataUnsigneds(t *testing.T) {
 		t.Errorf("Unsigneds() = %v, want %v", got, want)
 	}
 
-	if got := (Data{0x01, 0x02, 0x03}).Unsigneds(2, 0, 1); got != nil {
-		t.Errorf("Unsigneds() = %v, want nil for non-divisible data length", got)
+	if got := (Data{0x01, 0x02, 0x03}).Unsigneds(2, 0, 1); len(got) != 1 || got[0] != "invalid length 3 for 2-byte elements" {
+		t.Errorf("Unsigneds() = %v, want an invalid length message for non-divisible data length", got)
+	}
+	if got := (Data{0x05}).Unsigned(1, 0, 0); got != "invalid conversion factor 0" {
+		t.Errorf("Unsigned() with factor 0 = %q, want an invalid conversion factor message", got)
+	}
+	if got := (Data{0x05}).Unsigneds(1, 0, 0); len(got) != 1 || got[0] != "invalid conversion factor 0" {
+		t.Errorf("Unsigneds() with factor 0 = %v, want an invalid conversion factor message", got)
 	}
 	if got := data.Unsigneds(3, 0, 1); len(got) != 1 || got[0] != "invalid unsigned length 3" {
 		t.Errorf("Unsigneds() = %v, want invalid length message", got)

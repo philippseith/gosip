@@ -55,10 +55,10 @@ func TestDataString(t *testing.T) {
 			want: "1970-01-01T00:00:01.000000000Z",
 		},
 		{
-			name: "invalid format",
-			data: Data{0x01},
-			attr: NewAttribute(WithFormat(Format(8))),
-			want: "invalid format 8",
+			name: "reserved bit 23 is ignored",
+			data: Data{0x01, 0x00},
+			attr: Attribute(0x00910001),
+			want: "1",
 		},
 	}
 
@@ -127,10 +127,10 @@ func TestDataStrings(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid format",
-			data: Data{0x01},
-			attr: NewAttribute(WithFormat(Format(8))),
-			want: []string{"invalid format 8"},
+			name: "reserved bit 23 is ignored",
+			data: Data{0x01, 0x00},
+			attr: Attribute(0x00910001),
+			want: []string{"1"},
 		},
 	}
 
@@ -144,7 +144,7 @@ func TestDataStrings(t *testing.T) {
 
 	data := Data{0x01, 0x02, 0x03}
 	attr := NewAttribute(WithLength(2), WithFormat(Bin))
-	if got := data.Strings(attr); got != nil {
-		t.Errorf("Strings() = %v, want nil for non-divisible data length", got)
+	if got := data.Strings(attr); len(got) != 1 || got[0] != "invalid length 3 for 2-byte elements" {
+		t.Errorf("Strings() = %v, want an invalid length message for non-divisible data length", got)
 	}
 }

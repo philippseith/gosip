@@ -36,8 +36,8 @@ func TestDataHexen(t *testing.T) {
 		t.Errorf("Hexen(2) = %v, want %v", got, want)
 	}
 
-	if got := (Data{0x01, 0x02, 0x03}).Hexen(2); got != nil {
-		t.Errorf("Hexen(2) = %v, want nil for non-divisible data length", got)
+	if got := (Data{0x01, 0x02, 0x03}).Hexen(2); len(got) != 1 || got[0] != "invalid length 3 for 2-byte elements" {
+		t.Errorf("Hexen(2) = %v, want an invalid length message for non-divisible data length", got)
 	}
 	if got := data.Hexen(3); len(got) != 1 || got[0] != "invalid hex length 3" {
 		t.Errorf("Hexen(3) = %v, want invalid length message", got)

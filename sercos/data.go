@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -133,7 +132,7 @@ func (d Data) Bin(length int) string {
 	return result.String()
 }
 
-// Bins formats the data as a slice of binary strings, each with the specified length. Valid lengths are 1, 2, 4, and 8. Returns nil if the data length is not divisible by the specified length.
+// Bins formats the data as a slice of binary strings, each with the specified length. Valid lengths are 1, 2, 4, and 8. If the data length is not divisible by the specified length, it returns one message saying so.
 func (d Data) Bins(length int) []string {
 	switch length {
 	case 1, 2, 4, 8:
@@ -141,7 +140,7 @@ func (d Data) Bins(length int) []string {
 		return []string{fmt.Sprintf("invalid bin length %d", length)}
 	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	bins := make([]string, 0, len(d)/length)
@@ -151,12 +150,24 @@ func (d Data) Bins(length int) []string {
 	return bins
 }
 
+// misaligned is the result of the Strings-family helpers for data whose length is not a multiple of the element
+// length. It is a message and not an empty list, so a truncated or oddly sized list is not mistaken for an empty one.
+func misaligned(d Data, length int) []string {
+	return []string{fmt.Sprintf("invalid length %d for %d-byte elements", len(d), length)}
+}
+
+// invalidFactor is the result for a conversion factor of 0, which scales every value to 0. The parser rejects it too.
+const invalidFactor = "invalid conversion factor 0"
+
 // Unsigned formats the first length bytes as an unsigned fixed-point value.
 func (d Data) Unsigned(length, decimalPlaces, factor int) string {
 	switch length {
 	case 1, 2, 4, 8:
 	default:
 		return fmt.Sprintf("invalid unsigned length %d", length)
+	}
+	if factor == 0 {
+		return invalidFactor
 	}
 	var buf [8]byte
 	copy(buf[:length], d)
@@ -173,8 +184,11 @@ func (d Data) Unsigneds(length, decimalPlaces, factor int) []string {
 	default:
 		return []string{fmt.Sprintf("invalid unsigned length %d", length)}
 	}
+	if factor == 0 {
+		return []string{invalidFactor}
+	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	values := make([]string, 0, len(d)/length)
@@ -191,6 +205,9 @@ func (d Data) Signed(length, decimalPlaces, factor int) string {
 	default:
 		return fmt.Sprintf("invalid signed length %d", length)
 	}
+	if factor == 0 {
+		return invalidFactor
+	}
 	var buf [8]byte
 	copy(buf[:length], d)
 
@@ -199,8 +216,9 @@ func (d Data) Signed(length, decimalPlaces, factor int) string {
 	if bits < 64 {
 		value = value << (64 - bits) >> (64 - bits)
 	}
-	value *= int64(factor)
-	return formatFixedPoint(strconv.FormatInt(value, 10), decimalPlaces)
+	scaled := big.NewInt(value)
+	scaled.Mul(scaled, big.NewInt(int64(factor)))
+	return formatFixedPoint(scaled.String(), decimalPlaces)
 }
 
 // Signeds formats each length-byte chunk as a signed fixed-point value.
@@ -210,8 +228,11 @@ func (d Data) Signeds(length, decimalPlaces, factor int) []string {
 	default:
 		return []string{fmt.Sprintf("invalid signed length %d", length)}
 	}
+	if factor == 0 {
+		return []string{invalidFactor}
+	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	values := make([]string, 0, len(d)/length)
@@ -268,7 +289,7 @@ func (d Data) Hexen(length int) []string {
 		return []string{fmt.Sprintf("invalid hex length %d", length)}
 	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	hexen := make([]string, 0, len(d)/length)
@@ -299,7 +320,7 @@ func (d Data) Idn(length int) string {
 	return Idn(binary.LittleEndian.Uint32(buf[:])).String()
 }
 
-// Idns formats data as IDNs of length 2 or 4 and returns nil when the data length is not divisible by length.
+// Idns formats data as IDNs of length 2 or 4. If the data length is not divisible by length, it returns one message saying so.
 func (d Data) Idns(length int) []string {
 	switch length {
 	case 2, 4:
@@ -307,7 +328,7 @@ func (d Data) Idns(length int) []string {
 		return []string{fmt.Sprintf("invalid idn length %d", length)}
 	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	idns := make([]string, 0, len(d)/length)
@@ -332,7 +353,7 @@ func (d Data) Float(length int) string {
 	}
 }
 
-// Floats formats data as 4- or 8-byte floats and returns nil when the data length is not divisible by length.
+// Floats formats data as 4- or 8-byte floats. If the data length is not divisible by length, it returns one message saying so.
 func (d Data) Floats(length int) []string {
 	switch length {
 	case 4, 8:
@@ -340,7 +361,7 @@ func (d Data) Floats(length int) []string {
 		return []string{fmt.Sprintf("invalid float length %d", length)}
 	}
 	if len(d)%length != 0 {
-		return nil
+		return misaligned(d, length)
 	}
 
 	floats := make([]string, 0, len(d)/length)
@@ -370,10 +391,10 @@ func (d Data) Time() string {
 const timeLayout = "2006-01-02T15:04:05.000000000Z" // dt.Format works only with exactly this time. See https://pkg.go.dev/time#pkg-constants
 var epochStart = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// Times formats data as times and returns nil when the data length is not divisible by 8.
+// Times formats data as times. If the data length is not divisible by 8, it returns one message saying so.
 func (d Data) Times() []string {
 	if len(d)%8 != 0 {
-		return nil
+		return misaligned(d, 8)
 	}
 
 	times := make([]string, 0, len(d)/8)

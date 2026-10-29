@@ -41,8 +41,8 @@ func TestDataFloats(t *testing.T) {
 		t.Errorf("Floats(4) = %v, want %v", got, want)
 	}
 
-	if got := (Data{0x00, 0x00, 0xC0, 0x3F, 0x00}).Floats(4); got != nil {
-		t.Errorf("Floats(4) = %v, want nil for non-divisible data length", got)
+	if got := (Data{0x00, 0x00, 0xC0, 0x3F, 0x00}).Floats(4); len(got) != 1 || got[0] != "invalid length 5 for 4-byte elements" {
+		t.Errorf("Floats(4) = %v, want an invalid length message for non-divisible data length", got)
 	}
 	if got := data.Floats(2); len(got) != 1 || got[0] != "invalid float length 2" {
 		t.Errorf("Floats(2) = %v, want invalid length message", got)
