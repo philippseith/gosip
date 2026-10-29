@@ -321,14 +321,23 @@ func readEverything(client sip.Client, slaveIndex, slaveExtension int, idn uint3
 	}
 	fmt.Printf("IDN:           %s\n", sercos.Idn(idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
-	fmt.Printf("DataState:     0x%04x\n", resp.DataState)
-	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
-	fmt.Printf("Name:          %s\n", string(resp.Name))
-	fmt.Printf("Unit:          %s\n", string(resp.Unit))
-	fmt.Printf("Min:           %s\n", hex.EncodeToString(resp.Min[:]))
-	fmt.Printf("Max:           %s\n", hex.EncodeToString(resp.Max[:]))
+	if resp.ValidElements&sip.ElmDataState != 0 {
+		fmt.Printf("DataState:     0x%04x\n", resp.DataState)
+	}
+	if resp.ValidElements&sip.ElmAttribute != 0 {
+		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
+	}
+	if resp.ValidElements&sip.ElmName != 0 {
+		fmt.Printf("Name:          %s\n", string(resp.Name))
+	}
+	if resp.ValidElements&sip.ElmUnit != 0 {
+		fmt.Printf("Unit:          %s\n", string(resp.Unit))
+	}
+	printMinMax(resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
-	printData(resp.Data, sercos.Attribute(resp.Attribute))
+	if resp.ValidElements&sip.ElmData != 0 {
+		printData(resp.Data, sercos.Attribute(resp.Attribute))
+	}
 	return nil
 }
 
@@ -350,11 +359,16 @@ func readDescription(client sip.Client, slaveIndex, slaveExtension int, idn uint
 	}
 	fmt.Printf("IDN:           %s\n", sercos.Idn(idn))
 	fmt.Printf("ValidElements: 0x%04x (%s)\n", resp.ValidElements, validElements(resp.ValidElements))
-	fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
-	fmt.Printf("Name:          %s\n", string(resp.Name))
-	fmt.Printf("Unit:          %s\n", string(resp.Unit))
-	fmt.Printf("Min:           %s\n", hex.EncodeToString(resp.Min[:]))
-	fmt.Printf("Max:           %s\n", hex.EncodeToString(resp.Max[:]))
+	if resp.ValidElements&sip.ElmAttribute != 0 {
+		fmt.Printf("Attribute:     0x%08x\n", resp.Attribute)
+	}
+	if resp.ValidElements&sip.ElmName != 0 {
+		fmt.Printf("Name:          %s\n", string(resp.Name))
+	}
+	if resp.ValidElements&sip.ElmUnit != 0 {
+		fmt.Printf("Unit:          %s\n", string(resp.Unit))
+	}
+	printMinMax(resp.Min, resp.Max, resp.ValidElements, sercos.Attribute(resp.Attribute))
 	fmt.Printf("MaxListLength: %d\n", resp.MaxListLength)
 	return nil
 }
@@ -672,10 +686,27 @@ func validElements(ve uint16) string {
 	return strings.Join(set, "|")
 }
 
+// formatLimit formats an 8-byte Min/Max field using only the attribute's value length.
+func formatLimit(v [8]byte, attribute sercos.Attribute) string {
+	return sercos.Data(v[:attribute.Length()]).String(attribute)
+}
+
+func printMinMax(minRaw, maxRaw [8]byte, valid uint16, attribute sercos.Attribute) {
+	if valid&sip.ElmMin != 0 {
+		fmt.Printf("Min:           %s\n", formatLimit(minRaw, attribute))
+		fmt.Printf("Min (raw):     %s\n", hex.EncodeToString(minRaw[:]))
+	}
+	if valid&sip.ElmMax != 0 {
+		fmt.Printf("Max:           %s\n", formatLimit(maxRaw, attribute))
+		fmt.Printf("Max (raw):     %s\n", hex.EncodeToString(maxRaw[:]))
+	}
+}
+
 func printData(data []byte, attribute sercos.Attribute) {
 	fmt.Printf("DataLength:    %d\n", len(data))
 	if len(data) == 0 {
 		return
 	}
-	fmt.Printf("Data (formatted): %s\n", strings.Join(sercos.Data(data).Strings(attribute), ", "))
+	fmt.Printf("Data:          %s\n", strings.Join(sercos.Data(data).Strings(attribute), ", "))
+	fmt.Printf("Data (raw):    %s\n", hex.EncodeToString(data))
 }
