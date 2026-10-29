@@ -78,6 +78,10 @@ func writeElements(w io.Writer, width int, label string, elems []string) {
 		elementsPerRow = 1
 	}
 
+	writeElementRows(w, elems, offsetWidth, cellWidth, elementsPerRow)
+}
+
+func writeElementRows(w io.Writer, elems []string, offsetWidth, cellWidth, elementsPerRow int) {
 	multipleRows := len(elems) > elementsPerRow
 	for offset := 0; offset < len(elems); offset += elementsPerRow {
 		end := offset + elementsPerRow

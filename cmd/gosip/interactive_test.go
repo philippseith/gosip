@@ -155,6 +155,48 @@ func TestParseReadLine(t *testing.T) {
 	}
 }
 
+func TestParseWriteLine(t *testing.T) {
+	tests := []struct {
+		line      string
+		wantWrite bool
+		wantIDN   uint32
+		wantRaw   bool
+		wantInput string
+		wantErr   string
+	}{
+		{line: "w S-0-0032 1.000", wantWrite: true, wantIDN: 32, wantInput: "1.000"},
+		{line: "WR 7 e8 03", wantWrite: true, wantIDN: 7, wantRaw: true, wantInput: "e8 03"},
+		{line: "w 7 hello  world", wantWrite: true, wantIDN: 7, wantInput: "hello  world"},
+		{line: "w", wantWrite: true, wantErr: "missing IDN for w"},
+		{line: "wr", wantWrite: true, wantErr: "missing IDN for wr"},
+		{line: "w 7", wantWrite: true, wantErr: "missing data for w"},
+		{line: "w bogus 1", wantWrite: true, wantErr: "invalid IDN"},
+		{line: "ro 7"},
+		{line: "S-0-0032"},
+		{line: "write 7 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			got, isWrite, err := parseWriteLine(tt.line)
+			if isWrite != tt.wantWrite {
+				t.Fatalf("isWrite = %t, want %t", isWrite, tt.wantWrite)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseWriteLine(%q): %v", tt.line, err)
+			}
+			if got.idn != tt.wantIDN || got.raw != tt.wantRaw || got.input != tt.wantInput {
+				t.Errorf("got %+v, want idn=%d raw=%t input=%q", got, tt.wantIDN, tt.wantRaw, tt.wantInput)
+			}
+		})
+	}
+}
+
 func TestReadLinesContinuesAfterErrors(t *testing.T) {
 	var got []string
 	var errOut bytes.Buffer
@@ -219,7 +261,7 @@ func TestIsQuitLine(t *testing.T) {
 func TestPrintPromptHelp(t *testing.T) {
 	var out bytes.Buffer
 	printPromptHelp(&out)
-	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
+	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "w IDN", "wr IDN", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
 		if !strings.Contains(out.String(), text) {
 			t.Errorf("help output missing %q: %s", text, out.String())
 		}

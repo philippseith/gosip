@@ -44,10 +44,10 @@ gosip --address 192.168.1.50:35021 readonlydata --idn 0x100A
 
 Read output includes formatted values and spaced raw bytes. Long values wrap to the terminal width; wrapped raw rows show hexadecimal byte offsets, and wrapped formatted rows show decimal element indexes. Indexes are omitted when values fit on one row.
 
-To write raw parameter data as a hexadecimal byte string:
+Formatted writes accept values as printed by `readonlydata`, with list elements separated by spaces. To write raw parameter data as a hexadecimal byte string, use `--raw`:
 
 ```bash
-gosip --address 192.168.1.50:35021 writedata --idn S-0-0095.0.0 --data 00112233
+gosip --address 192.168.1.50:35021 writedata --idn S-0-0095.0.0 --raw --data 00112233
 ```
 
 To identify a device on a specific network interface:

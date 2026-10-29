@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/philippseith/gosip/sip"
 	"golang.org/x/term"
@@ -197,7 +198,7 @@ func (r *lineReader) consumeEscape(ctx context.Context) bool {
 // lineOK; that status (lineEscape or lineEOF) is returned. An error from fn is written to errOut as
 // "error: <err>" and the loop continues, except an explicit quit or an fn error after ctx is canceled, which
 // returns lineEOF silently. Read errors other than EOF are treated as EOF.
-func readLines(ctx context.Context, lr *lineReader, prompt string, errOut io.Writer, fn func(line string) error) lineStatus {
+func readLines(ctx context.Context, lr *lineReader, prompt string, errOut io.Writer, fn func(line string) error) lineStatus { //nolint:unparam // EOF and Escape are separately tested; prompt callers treat both as success.
 	for {
 		line, st := lr.ReadLine(ctx, prompt)
 		if st != lineOK {
@@ -290,6 +291,46 @@ func parseReadLine(line string) (readCommand, uint32, error) {
 	return rc, idn, nil
 }
 
+func cutWord(s string) (word, rest string) {
+	s = strings.TrimSpace(s)
+	i := strings.IndexFunc(s, unicode.IsSpace)
+	if i < 0 {
+		return s, ""
+	}
+	return s[:i], strings.TrimSpace(s[i:])
+}
+
+type writeLine struct {
+	idn   uint32
+	raw   bool
+	input string
+}
+
+func parseWriteLine(line string) (wl writeLine, isWrite bool, err error) {
+	word, rest := cutWord(line)
+	switch {
+	case strings.EqualFold(word, "w"):
+	case strings.EqualFold(word, "wr"):
+		wl.raw = true
+	default:
+		return writeLine{}, false, nil
+	}
+	idnStr, input := cutWord(rest)
+	if idnStr == "" {
+		return wl, true, fmt.Errorf("missing IDN for %s", strings.ToLower(word))
+	}
+	idn, err := parseIdn(idnStr)
+	if err != nil {
+		return wl, true, err
+	}
+	if input == "" {
+		return wl, true, fmt.Errorf("missing data for %s", strings.ToLower(word))
+	}
+	wl.idn = idn
+	wl.input = input
+	return wl, true, nil
+}
+
 // isStatusLine reports whether the line asks for the status ("s" or "status", case-insensitive).
 func isStatusLine(line string) bool {
 	return strings.EqualFold(line, "s") || strings.EqualFold(line, "status")
@@ -315,6 +356,8 @@ func printPromptHelp(out io.Writer) {
 		}
 		fmt.Fprintf(out, "  %-6s %-16s %s\n", short, rc.name, rc.summary)
 	}
+	fmt.Fprintf(out, "  %-6s %-16s %s\n", "w", "write", "write formatted data: w IDN value [value...]")
+	fmt.Fprintf(out, "  %-6s %-16s %s\n", "wr", "write raw", "write raw hex bytes: wr IDN 0a1b2c3d")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "s", "status", "show the negotiated BusyTimeout and LeaseTimeout")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "h, ?", "help", "show this help")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "q", "quit", "quit the prompt")
@@ -368,6 +411,12 @@ func runPrompt(client sip.Client, options []sip.RequestOption) error {
 		if isStatusLine(line) {
 			rep.print()
 			return nil
+		}
+		if wl, isWrite, err := parseWriteLine(line); isWrite {
+			if err != nil {
+				return err
+			}
+			return writeIDN(client, os.Stdout, 0, 0, wl.idn, wl.input, wl.raw, reqOptions)
 		}
 		rc, idn, err := parseReadLine(line)
 		if err != nil {

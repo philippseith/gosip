@@ -165,7 +165,7 @@ func parseIdn(s string, length int) (Data, error) {
 	}
 	parts := idnPattern.FindStringSubmatch(s)
 	if parts == nil {
-		return nil, parseError("sercos: invalid idn value %q", s)
+		return nil, parseError("sercos: invalid IDN %q", s)
 	}
 	if length == 2 && parts[4] != "" {
 		return nil, parseError("sercos: idn with structure fields needs length 4: %q", s)
@@ -213,7 +213,7 @@ func idnValue(parts []string, input string) (uint32, error) {
 func parseIDNField(text, field, input string, maximum int) (int, error) {
 	value, err := strconv.Atoi(text)
 	if err != nil || value > maximum {
-		return 0, parseError("sercos: idn %s out of range in %q", field, input)
+		return 0, parseError("sercos: invalid IDN %q: %s out of range", input, field)
 	}
 	return value, nil
 }

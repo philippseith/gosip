@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/philippseith/gosip/sercos"
@@ -173,6 +174,47 @@ func TestWriteElements(t *testing.T) {
 			writeElements(&buf, tt.width, "Data", tt.elems)
 			if got := buf.String(); got != tt.want {
 				t.Errorf("writeElements() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseIdn(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    uint32
+		wantErr string
+	}{
+		{input: "S-0-0032.0.0", want: 32},
+		{input: "S-0-0032", want: 32},
+		{input: "0x100A", want: 0x100A},
+		{input: "7", want: 7},
+		{input: " P-0-0100.1.2 ", want: 0x01028064},
+		{input: "s-1-0002", want: 0x1002},
+		{input: "S-7-4095.255.255", want: 0xFFFF7FFF},
+		{input: "S-8-0001", wantErr: "invalid IDN"},
+		{input: "S-0-4096", wantErr: "invalid IDN"},
+		{input: "X-0-0001", wantErr: "invalid IDN"},
+		{input: "S-0-0001.1", wantErr: "invalid IDN"},
+		{input: "S-0-0001.256.0", wantErr: "invalid IDN"},
+		{input: "not-an-idn", wantErr: "invalid IDN"},
+		{input: "", wantErr: "invalid IDN"},
+		{input: "4294967296", wantErr: "invalid IDN"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseIdn(tt.input)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseIdn(%q) error = %v, want substring %q", tt.input, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseIdn(%q): %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("parseIdn(%q) = %#x, want %#x", tt.input, got, tt.want)
 			}
 		})
 	}

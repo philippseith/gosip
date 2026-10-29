@@ -20,14 +20,15 @@
 //	identify         Broadcast an Identify request
 //	setip            Broadcast a SetIP request
 //
-// Without a command (terminal only), gosip prompts for "[command] IDN" lines, e.g. "ro S-0-0032.0.0"; the
-// short commands are re, ro, rd, rs (re, r or no command: readeverything). "s" shows BusyTimeout and
-// LeaseTimeout. "h", "?", or "help" shows command help;
-// "q"/"quit", Esc or Ctrl-D quits.
+// Without a command (terminal only), gosip prompts for read and write lines, e.g.
+// "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
+// "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. "s" shows BusyTimeout
+// and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
 package main
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -195,7 +196,7 @@ commands:
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
 
-Without a command (terminal only), gosip prompts for "[command] IDN" lines, e.g. "ro S-0-0032.0.0". Short commands: re (also r or omitted), ro, rd, rs. "s" shows BusyTimeout and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
+Without a command (terminal only), gosip prompts for "[command] IDN" lines, e.g. "ro S-0-0032.0.0". Short commands: re (also r or omitted), ro, rd, rs, w IDN value... (formatted), wr IDN hex... (raw). "s" shows BusyTimeout and LeaseTimeout. "h", "?", or "help" shows command help; "q"/"quit", Esc or Ctrl-D quits.
 
 Run "gosip <command> -h" for the flags of a command.
 `)
@@ -385,10 +386,12 @@ func readDataState(client sip.Client, slaveIndex, slaveExtension int, idn uint32
 	return nil
 }
 
-func doWriteData(client sip.Client, args []string, options []sip.RequestOption) error {
+func doWriteData(client dataClient, args []string, options []sip.RequestOption) error {
 	var dataStr string
+	var raw bool
 	t, fs, err := parseTarget("writedata", args, func(fs *pflag.FlagSet) {
-		fs.StringVarP(&dataStr, "data", "d", "", "[mandatory] data as hex string, e.g. 0a1b2c3d")
+		fs.StringVarP(&dataStr, "data", "d", "", "[mandatory] data, formatted (default) or raw hex bytes with --raw")
+		fs.BoolVar(&raw, "raw", false, "[optional] --data is raw hex bytes, e.g. 0a1b2c3d (written as given, without reading the IDN first); default: formatted data as printed by readonlydata, e.g. 1.000, 0x0102, P-0-0001; several elements separated by spaces")
 	}, true)
 	if err != nil {
 		return err
@@ -397,15 +400,14 @@ func doWriteData(client sip.Client, args []string, options []sip.RequestOption) 
 		fs.Usage()
 		return errors.New("--data is required")
 	}
-	data, err := hex.DecodeString(strings.TrimPrefix(strings.ReplaceAll(dataStr, " ", ""), "0x"))
-	if err != nil {
-		return fmt.Errorf("invalid --data: %w", err)
+	if raw {
+		data, err := decodeRawData(dataStr)
+		if err != nil {
+			return err
+		}
+		return writeData(client, os.Stdout, t.slaveIndex, t.slaveExtension, t.idn, data, options)
 	}
-	if err := client.WriteData(t.slaveIndex, t.slaveExtension, t.idn, data, options...); err != nil {
-		return err
-	}
-	fmt.Printf("wrote %d bytes to %s\n", len(data), sercos.Idn(t.idn))
-	return nil
+	return writeIDN(client, os.Stdout, t.slaveIndex, t.slaveExtension, t.idn, dataStr, false, options)
 }
 
 func doBrowse(args []string) error {
@@ -613,54 +615,21 @@ func interfaceFlagUsage() string {
 	return description + "; available interfaces: " + strings.Join(names, ", ")
 }
 
+// idnAttribute selects sercos.ParseData's IDN parser with 4 data bytes, which accepts both S-0-0095 and S-0-0095.1.2.
+var idnAttribute = sercos.NewAttribute(sercos.WithFormat(sercos.IDN), sercos.WithLength(4))
+
 // parseIdn accepts a decimal or hexadecimal number or the Sercos notation
-// S-0-0095, P-0-0100.1.2 as printed by sip.Idn.String.
-func parseIdn(s string) (uint32, error) { // nolint:cyclop
+// S-0-0095, P-0-0100.1.2 as printed by sercos.Idn.String.
+func parseIdn(s string) (uint32, error) {
 	s = strings.TrimSpace(s)
 	if u, err := strconv.ParseUint(s, 0, 32); err == nil {
 		return uint32(u), nil // nolint:gosec
 	}
-
-	parts := strings.Split(s, "-")
-	if len(parts) != 3 {
-		return 0, fmt.Errorf("invalid IDN %q", s)
+	data, err := sercos.ParseData(idnAttribute, s)
+	if err != nil {
+		return 0, err
 	}
-	var idn uint32
-	switch strings.ToUpper(parts[0]) {
-	case "S":
-	case "P":
-		idn |= 0x8000
-	default:
-		return 0, fmt.Errorf("invalid IDN %q: type must be S or P", s)
-	}
-	set, err := strconv.ParseUint(parts[1], 10, 8)
-	if err != nil || set > 7 {
-		return 0, fmt.Errorf("invalid IDN %q: parameter set must be 0..7", s)
-	}
-	idn |= uint32(set) << 12
-
-	// block number, optionally followed by .structureInstance.structureElement
-	nums := strings.Split(parts[2], ".")
-	if len(nums) != 1 && len(nums) != 3 {
-		return 0, fmt.Errorf("invalid IDN %q", s)
-	}
-	block, err := strconv.ParseUint(nums[0], 10, 16)
-	if err != nil || block > 0x0fff {
-		return 0, fmt.Errorf("invalid IDN %q: block number must be 0..4095", s)
-	}
-	idn |= uint32(block)
-	if len(nums) == 3 {
-		si, err := strconv.ParseUint(nums[1], 10, 8)
-		if err != nil {
-			return 0, fmt.Errorf("invalid IDN %q: invalid structure instance", s)
-		}
-		se, err := strconv.ParseUint(nums[2], 10, 8)
-		if err != nil {
-			return 0, fmt.Errorf("invalid IDN %q: invalid structure element", s)
-		}
-		idn |= uint32(si)<<24 | uint32(se)<<16
-	}
-	return idn, nil
+	return binary.LittleEndian.Uint32(data), nil
 }
 
 func validElements(ve uint16) string {
