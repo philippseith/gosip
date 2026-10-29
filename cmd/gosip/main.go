@@ -28,7 +28,7 @@
 // "ro S-0-0032.0.0" or "w S-0-0032 1.000". Read commands are re (also r or omitted), ro, rd, rs;
 // "w IDN value..." writes formatted data and "wr IDN hex..." writes raw bytes. The editor supports
 // in-memory Up/Down history, cursor keys and bracketed paste; "s" shows timeouts, "h" shows help,
-// "b [interface]" browses devices (choosing an interface if omitted), and "q"/"quit", Esc or Ctrl-D quits.
+// "a host[:port]" changes the target, "b [interface]" browses devices, and "q"/"quit", Esc or Ctrl-D quits.
 package main
 
 import (
@@ -131,11 +131,10 @@ func run(args []string) error { // nolint:cyclop
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
-
 	if menu {
-		return runPrompt(client, reqOptions)
+		return runPrompt(client, g.address, dial, reqOptions)
 	}
+	defer func() { _ = client.Close() }()
 	return runClientCommand(client, cmd, cmdArgs, reqOptions, fs)
 }
 
@@ -218,7 +217,7 @@ commands:
 The broadcast commands browse, identify and setip use UDP and ignore the
 connection related global flags.
 The mcp command requires an address in every device tool request and rejects --address.
-The interactive prompt accepts "b [interface]" to browse devices; omit the interface to choose from the available IPv4 interfaces.
+The interactive prompt accepts "a host[:port]" (or "address host[:port]") to switch the S/IP target and "b [interface]" to browse; omit the interface to choose from available IPv4 interfaces.
 
 
 Run "gosip <command> -h" for the flags of a command.
@@ -266,9 +265,9 @@ func parseTarget(name string, args []string, extra func(*pflag.FlagSet), idnRequ
 	var t target
 	var idnStr string
 
-	idnUsage := `[mandatory] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S-95.0.0)`
+	idnUsage := `[mandatory] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S30 or S-95.0.0)`
 	if !idnRequired {
-		idnUsage = `[optional] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S-95.0.0); if omitted, IDNs are prompted for until Ctrl-C or Ctrl-D (enter s for the negotiated timeouts; h for help; q to quit)`
+		idnUsage = `[optional] IDN, either numeric (4106, 0x100A) or Sercos notation (S/P and set may be omitted; leading zeros are optional, e.g. S30 or S-95.0.0); if omitted, IDNs are prompted for until Ctrl-C or Ctrl-D (enter s for the negotiated timeouts; h for help; q to quit)`
 	}
 	fs := newFlagSet(name)
 	fs.StringVarP(&idnStr, "idn", "i", "", idnUsage)
@@ -650,7 +649,7 @@ func interfaceFlagUsage() string {
 var idnAttribute = sercos.NewAttribute(sercos.WithFormat(sercos.IDN), sercos.WithLength(4))
 
 // parseIdn accepts a decimal or 0x-prefixed hexadecimal number, or Sercos notation
-// with optional S/P type and set and optional leading zeros, e.g. S-95 or P-100.1.2.
+// with optional S/P type and set and optional leading zeros, e.g. S30, S-95, or P-100.1.2.
 func parseIdn(s string) (uint32, error) {
 	s = strings.TrimSpace(s)
 	var numeric string

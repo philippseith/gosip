@@ -192,6 +192,8 @@ func TestParseIdn(t *testing.T) {
 		{input: "0095", want: 95},
 		{input: "0010", want: 10},
 		{input: "S-95", want: 95},
+		{input: "S30", want: 30},
+		{input: "s30", want: 30},
 		{input: "S-0-95", want: 95},
 		{input: "P-100", want: 0x8064},
 		{input: "p-1-2", want: 0x9002},

@@ -16,8 +16,9 @@ import (
 var (
 	unsignedFixedPattern = regexp.MustCompile(`^([0-9]+)(?:\.([0-9]+))?$`)
 	signedFixedPattern   = regexp.MustCompile(`^([+-]?)([0-9]+)(?:\.([0-9]+))?$`)
-	idnPattern           = regexp.MustCompile(`^(?:([SsPp])-)?(?:([0-9])-)?([0-9]+)(?:\.([0-9]+)\.([0-9]+))?$`)
-	digitSeparators      = strings.NewReplacer(".", "", "_", "", " ", "")
+	// Groups: type+set, set, dashed type, compact standard type, set-only, number, structure fields.
+	idnPattern      = regexp.MustCompile(`^(?:([SsPp])-([0-9])-|([SsPp])-|([Ss])|([0-9])-)?([0-9]+)(?:\.([0-9]+)\.([0-9]+))?$`)
+	digitSeparators = strings.NewReplacer(".", "", "_", "", " ", "")
 )
 
 func parseError(format string, args ...any) error {
@@ -167,7 +168,7 @@ func parseIdn(s string, length int) (Data, error) {
 	if parts == nil {
 		return nil, parseError("sercos: invalid IDN %q", s)
 	}
-	if length == 2 && parts[4] != "" {
+	if length == 2 && parts[7] != "" {
 		return nil, parseError("sercos: idn with structure fields needs length 4: %q", s)
 	}
 	value, err := idnValue(parts, s)
@@ -183,29 +184,45 @@ func parseIdn(s string, length int) (Data, error) {
 	return Data(append([]byte(nil), buf[:length]...)), nil
 }
 
+func idnTypeAndSet(parts []string) (typeName, setText string) {
+	typeName = parts[1]
+	if typeName == "" {
+		typeName = parts[3]
+	}
+	if typeName == "" {
+		typeName = parts[4]
+	}
+	setText = parts[2]
+	if setText == "" {
+		setText = parts[5]
+	}
+	return typeName, setText
+}
+
 func idnValue(parts []string, input string) (uint32, error) {
+	typeName, setText := idnTypeAndSet(parts)
 	set := 0
-	if parts[2] != "" {
+	if setText != "" {
 		var err error
-		set, err = parseIDNField(parts[2], "set", input, 7)
+		set, err = parseIDNField(setText, "set", input, 7)
 		if err != nil {
 			return 0, err
 		}
 	}
-	number, err := parseIDNField(parts[3], "number", input, 4095)
+	number, err := parseIDNField(parts[6], "number", input, 4095)
 	if err != nil {
 		return 0, err
 	}
 	value := uint32(set<<12 | number) // nolint:gosec
-	if parts[1] == "P" || parts[1] == "p" {
+	if typeName == "P" || typeName == "p" {
 		value |= 0x8000
 	}
-	if parts[4] != "" {
-		first, err := parseIDNField(parts[4], "structure field 1", input, 255)
+	if parts[7] != "" {
+		first, err := parseIDNField(parts[7], "structure field 1", input, 255)
 		if err != nil {
 			return 0, err
 		}
-		second, err := parseIDNField(parts[5], "structure field 2", input, 255)
+		second, err := parseIDNField(parts[8], "structure field 2", input, 255)
 		if err != nil {
 			return 0, err
 		}

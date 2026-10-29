@@ -48,6 +48,8 @@ func TestParseData(t *testing.T) {
 		{name: "idn product with leading zeros", attr: 0x00510001, input: "0001", want: Data{0x01, 0x00}},
 		{name: "idn product without set", attr: 0x00510001, input: "P-100", want: Data{0x64, 0x80}},
 		{name: "idn default type and set", attr: 0x00510001, input: "S-1", want: Data{0x01, 0x00}},
+		{name: "idn compact uppercase type", attr: 0x00510001, input: "S30", want: Data{0x1E, 0x00}},
+		{name: "idn compact lowercase type", attr: 0x00510001, input: "s30", want: Data{0x1E, 0x00}},
 		{name: "idn structure requires four bytes", attr: 0x00510001, input: "S-0-0001.0.0", wantErr: true},
 		{name: "idn structure", attr: 0x00520001, input: "S-1-0002.3.2", want: Data{0x02, 0x10, 0x02, 0x03}},
 		{name: "idn structure without type", attr: 0x00520001, input: "1-2.3.2", want: Data{0x02, 0x10, 0x02, 0x03}},

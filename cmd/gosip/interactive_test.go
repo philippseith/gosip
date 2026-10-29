@@ -347,15 +347,49 @@ func TestIsQuitLine(t *testing.T) {
 func TestPrintPromptHelp(t *testing.T) {
 	var out bytes.Buffer
 	printPromptHelp(&out, true)
-	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "w IDN", "wr IDN", "b [interface]", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
+	for _, text := range []string{"[command] IDN", "re, r", "readonlydata", "readdescription", "readdatastate", "w IDN", "wr IDN", "a host[:port]", "b [interface]", "status", "h, ?", "q", "Esc, or Ctrl-D"} {
 		if !strings.Contains(out.String(), text) {
 			t.Errorf("help output missing %q: %s", text, out.String())
 		}
 	}
 	var idnOut bytes.Buffer
 	printPromptHelp(&idnOut, false)
-	if strings.Contains(idnOut.String(), "browse") {
-		t.Errorf("IDN help unexpectedly contains browse command: %s", idnOut.String())
+	for _, command := range []string{"address", "browse"} {
+		if strings.Contains(idnOut.String(), command) {
+			t.Errorf("IDN help unexpectedly contains %q command: %s", command, idnOut.String())
+		}
+	}
+}
+
+func TestParseAddressLine(t *testing.T) {
+	tests := []struct {
+		line        string
+		wantAddress string
+		wantIsSet   bool
+		wantErr     string
+	}{
+		{line: "a 192.0.2.1", wantAddress: "192.0.2.1", wantIsSet: true},
+		{line: "A 192.0.2.1:1234", wantAddress: "192.0.2.1:1234", wantIsSet: true},
+		{line: "address host", wantAddress: "host", wantIsSet: true},
+		{line: "a", wantIsSet: true, wantErr: "expected a <address>"},
+		{line: "a host extra", wantIsSet: true, wantErr: "expected a <address>"},
+		{line: "ro 32"},
+		{line: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			address, isAddress, err := parseAddressLine(tt.line)
+			if address != tt.wantAddress || isAddress != tt.wantIsSet {
+				t.Fatalf("parseAddressLine(%q) = (%q, %t), want (%q, %t)", tt.line, address, isAddress, tt.wantAddress, tt.wantIsSet)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("parseAddressLine(%q) error = %v", tt.line, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("parseAddressLine(%q) error = %v, want substring %q", tt.line, err, tt.wantErr)
+			}
+		})
 	}
 }
 

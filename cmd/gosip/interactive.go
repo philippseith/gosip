@@ -626,6 +626,17 @@ func parseWriteLine(line string) (wl writeLine, isWrite bool, err error) {
 	return wl, true, nil
 }
 
+func parseAddressLine(line string) (address string, isAddress bool, err error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 || (!strings.EqualFold(fields[0], "a") && !strings.EqualFold(fields[0], "address")) {
+		return "", false, nil
+	}
+	if len(fields) != 2 {
+		return "", true, errors.New("expected a <address>")
+	}
+	return fields[1], true, nil
+}
+
 func parseBrowseLine(line string) (interfaceName string, isBrowse bool, err error) {
 	fields := strings.Fields(line)
 	if len(fields) == 0 || (!strings.EqualFold(fields[0], "b") && !strings.EqualFold(fields[0], "browse")) {
@@ -705,7 +716,7 @@ func isQuitLine(line string) bool {
 }
 
 // printPromptHelp writes the command and control help used by both interactive prompts.
-func printPromptHelp(out io.Writer, browse bool) {
+func printPromptHelp(out io.Writer, gosipPrompt bool) {
 	fmt.Fprintln(out, `Enter: [command] IDN, e.g. ro S-0-0032.0.0. Without command, re is used.`)
 	for _, rc := range readCommands {
 		short := rc.short
@@ -716,7 +727,8 @@ func printPromptHelp(out io.Writer, browse bool) {
 	}
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "w", "write", "write formatted data: w IDN value [value...]")
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "wr", "write raw", "write raw hex bytes: wr IDN 0a1b2c3d")
-	if browse {
+	if gosipPrompt {
+		fmt.Fprintf(out, "  %-6s %-16s %s\n", "a", "address", "set the target S/IP address: a host[:port]")
 		fmt.Fprintf(out, "  %-6s %-16s %s\n", "b", "browse", "list devices answering a UDP Browse: b [interface]; without interface, choose one")
 	}
 	fmt.Fprintf(out, "  %-6s %-16s %s\n", "s", "status", "show the negotiated BusyTimeout and LeaseTimeout")
@@ -753,9 +765,37 @@ func (r *timeoutReporter) print() {
 	fmt.Fprintf(r.out, "LeaseTimeout: %v\n", lease)
 }
 
-// runPrompt prompts for "[command] IDN" lines (see parseReadLine), help and status until q/quit, Esc, Ctrl-D or Ctrl-C
-// (all end the program with status 0). Always reads slave 0, extension 0.
-func runPrompt(client sip.Client, options []sip.RequestOption) error {
+// handleAddressLine constructs the replacement client before closing the current one.
+func handleAddressLine(line string, client *sip.Client, address *string, reporter *timeoutReporter, dial func(string) (sip.Client, error)) (bool, error) {
+	requestedAddress, isAddress, err := parseAddressLine(line)
+	if !isAddress {
+		return false, nil
+	}
+	if err != nil {
+		return true, err
+	}
+	newAddress := addressWithDefaultPort(requestedAddress)
+	if newAddress == *address {
+		fmt.Fprintf(os.Stdout, "Address already set to %s\n", *address)
+		return true, nil
+	}
+	newClient, err := dial(newAddress)
+	if err != nil {
+		return true, err
+	}
+	oldClient := *client
+	*client = newClient
+	*address = newAddress
+	reporter.client = newClient
+	_ = oldClient.Close()
+	fmt.Fprintf(os.Stdout, "Address set to %s\n", *address)
+	return true, nil
+}
+
+// runPrompt accepts read/write lines and prompt commands until q/quit, Esc, Ctrl-D or Ctrl-C.
+// Address changes replace the lazy client; subsequent reads and writes use the new target.
+func runPrompt(client sip.Client, address string, dial func(string) (sip.Client, error), options []sip.RequestOption) error {
+	defer func() { _ = client.Close() }()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	reqOptions := append(slices.Clone(options), sip.WithContext(ctx))
@@ -773,6 +813,9 @@ func runPrompt(client sip.Client, options []sip.RequestOption) error {
 		if isStatusLine(line) {
 			rep.print()
 			return nil
+		}
+		if handled, err := handleAddressLine(line, &client, &address, rep, dial); handled {
+			return err
 		}
 		if name, isBrowse, err := parseBrowseLine(line); isBrowse {
 			if err != nil {
