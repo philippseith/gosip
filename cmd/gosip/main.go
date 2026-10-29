@@ -182,7 +182,7 @@ func runClientCommand(client sip.Client, cmd string, cmdArgs []string, reqOption
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 	if !errors.Is(err, pflag.ErrHelp) {
-		newTimeoutReporter(client, os.Stdout).print()
+		newTimeoutReporter(client, os.Stdout).printIfConnected()
 	}
 	return err
 }
@@ -347,7 +347,7 @@ func doRead(rc readCommand, client sip.Client, args []string, options []sip.Requ
 	}
 	if t.idnGiven {
 		err := rc.read(client, t.slaveIndex, t.slaveExtension, t.idn, options)
-		newTimeoutReporter(client, os.Stdout).print()
+		newTimeoutReporter(client, os.Stdout).printIfConnected()
 		return err
 	}
 	return forEachIDN(client, options, func(idn uint32, options []sip.RequestOption) error {

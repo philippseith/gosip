@@ -754,13 +754,25 @@ func newTimeoutReporter(client timeoutSource, out io.Writer) *timeoutReporter {
 	return &timeoutReporter{client: client, out: out}
 }
 
-// print writes the timeouts; the client reports 0 until the first request connected it.
+// print writes the timeouts, or explains that no request has connected yet.
 func (r *timeoutReporter) print() {
 	busy, lease := r.client.BusyTimeout(), r.client.LeaseTimeout()
 	if busy <= 0 || lease <= 0 {
 		fmt.Fprintln(r.out, "not connected yet")
 		return
 	}
+	r.printTimeouts(busy, lease)
+}
+
+// printIfConnected writes the negotiated timeouts only when a request established a connection.
+func (r *timeoutReporter) printIfConnected() {
+	busy, lease := r.client.BusyTimeout(), r.client.LeaseTimeout()
+	if busy > 0 && lease > 0 {
+		r.printTimeouts(busy, lease)
+	}
+}
+
+func (r *timeoutReporter) printTimeouts(busy, lease time.Duration) {
 	fmt.Fprintf(r.out, "BusyTimeout: %v\n", busy)
 	fmt.Fprintf(r.out, "LeaseTimeout: %v\n", lease)
 }

@@ -510,6 +510,17 @@ func TestTimeoutReporter(t *testing.T) {
 	if out.String() != want {
 		t.Fatalf("first print after connect = %q, want %q", out.String(), want)
 	}
+	out.Reset()
+	fake.busy, fake.lease = 0, 0
+	rep.printIfConnected()
+	if out.Len() != 0 {
+		t.Errorf("printIfConnected before connection = %q, want no output", out.String())
+	}
+	fake.busy, fake.lease = 2*time.Second, 10*time.Second
+	rep.printIfConnected()
+	if out.String() != want {
+		t.Errorf("printIfConnected after connection = %q, want %q", out.String(), want)
+	}
 	rep.print()
 	if out.String() != want+want {
 		t.Errorf("second print after connect = %q, want %q", out.String(), want+want)
