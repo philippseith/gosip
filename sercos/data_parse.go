@@ -16,7 +16,7 @@ import (
 var (
 	unsignedFixedPattern = regexp.MustCompile(`^([0-9]+)(?:\.([0-9]+))?$`)
 	signedFixedPattern   = regexp.MustCompile(`^([+-]?)([0-9]+)(?:\.([0-9]+))?$`)
-	idnPattern           = regexp.MustCompile(`^([SsPp])-([0-9])-([0-9]+)(?:\.([0-9]+)\.([0-9]+))?$`)
+	idnPattern           = regexp.MustCompile(`^(?:([SsPp])-)?(?:([0-9])-)?([0-9]+)(?:\.([0-9]+)\.([0-9]+))?$`)
 	digitSeparators      = strings.NewReplacer(".", "", "_", "", " ", "")
 )
 
@@ -184,9 +184,13 @@ func parseIdn(s string, length int) (Data, error) {
 }
 
 func idnValue(parts []string, input string) (uint32, error) {
-	set, err := parseIDNField(parts[2], "set", input, 7)
-	if err != nil {
-		return 0, err
+	set := 0
+	if parts[2] != "" {
+		var err error
+		set, err = parseIDNField(parts[2], "set", input, 7)
+		if err != nil {
+			return 0, err
+		}
 	}
 	number, err := parseIDNField(parts[3], "number", input, 4095)
 	if err != nil {
