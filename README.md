@@ -114,6 +114,35 @@ Run `gosip mcp` to expose the CLI operations as MCP tools over standard input an
 - Text that devices supply (display and host names, IDN names and units, text data) is untrusted. 
 - `gosip` replaces control characters and invalid UTF-8 in it with `.` before printing it to a terminal; the MCP server returns it unchanged, but the server instructions, the tool descriptions and the output schemas mark it as untrusted data that the model must not treat as instructions.
 
+### Register the MCP server in an agent client
+
+`gosip mcp` speaks MCP over stdio. The checked-in project configs run `go run ./cmd/gosip mcp`, so Go must be on `PATH` and the client must start the server from the repository root; the first run may download modules. Add flags such as `--allow-port 35022` or `--allow-all-hosts` after `mcp` only when needed. The clients also support user-level config, but those entries should use an installed `gosip` binary rather than this repository-relative command.
+
+This repository includes ready-to-use project configs for every client listed here, including OMP and Pi. **Try it out!**
+
+![OMP MCP walkthrough: list tools , query S-0-0032, and show the result](doc/omp-mcp-query.gif)
+
+| Client | Project file | Entry |
+|---|---|---|
+| Claude Code, Copilot CLI | `.mcp.json` | `{"mcpServers": {"gosip": {"command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| Cursor | `.cursor/mcp.json` | `{"mcpServers": {"gosip": {"command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| Gemini CLI | `.gemini/settings.json` | `{"mcpServers": {"gosip": {"command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| VS Code | `.vscode/mcp.json` | `{"servers": {"gosip": {"type": "stdio", "command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| Zed | `.zed/settings.json` | `{"context_servers": {"gosip": {"command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| opencode | `opencode.json` | `{"mcp": {"gosip": {"type": "local", "command": ["go", "run", "./cmd/gosip", "mcp"]}}}` |
+| OMP | `.omp/mcp.json` | `{"mcpServers": {"gosip": {"type": "stdio", "command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+| Pi | `.pi/mcp.json` | `{"mcpServers": {"gosip": {"command": "go", "args": ["run", "./cmd/gosip", "mcp"]}}}` |
+
+Codex reads `.codex/config.toml` in trusted projects:
+
+```toml
+[mcp_servers.gosip]
+command = "go"
+args = ["run", "./cmd/gosip", "mcp"]
+```
+
+Merge the entry into an existing file instead of replacing it. Pi reads `.pi/mcp.json` only after you trust the project, and by default makes MCP tools reachable only through its `codemode` tool; add `"exposure": "direct"` to the `gosip` entry to declare the tools to the model directly. Clients ask for approval of project-scoped servers and tool calls; `writedata` and `setip` change device state, so review each call.
+
 ## Parsing formatted Sercos data
 
 `sercos.ParseData(attr, s)` reverses `Data.String(attr)`. `sercos.ParseDatas(attr, ss)` parses the elements returned by `Data.Strings(attr)` and concatenates their bytes. `sercos.Data` also implements `fmt.Scanner` for `b`, `u`, `d`, `x`, `X`, `s`, `i`, `f`, and `t`.

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "gosip": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "./cmd/gosip", "mcp"]
+    }
+  }
+}
