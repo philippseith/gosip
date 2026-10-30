@@ -16,7 +16,7 @@ To install the gosip CLI tool into your Go toolchain, run:
 go install github.com/philippseith/gosip/cmd/gosip@latest
 ```
 
-Use a tagged version instead of `@latest` if you want to pin a specific release, for example `@v0.1.0`.
+Before tagging a CLI release, update `cmd/gosip/go.mod` to require a published root-library revision that contains the nested-module boundary. CLI releases use the module-directory prefix `cmd/gosip/vX.Y.Z`; for example, tag `cmd/gosip/v0.1.0` to install with `@v0.1.0`. Library releases remain tagged `vX.Y.Z`.
 
 ### Basic usage examples
 
