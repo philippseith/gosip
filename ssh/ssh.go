@@ -97,20 +97,13 @@ func AttachSIPSource(
 	if server.ChannelHandlers != nil && server.ChannelHandlers["direct-tcpip"] != nil {
 		return invalidSIPSourceInstall("direct-tcpip already has a channel handler")
 	}
-	for _, option := range connOptions {
-		if option == nil {
-			return invalidSIPSourceInstall("ConnOption must be non-nil")
-		}
+	if err := checkConnOptions(connOptions); err != nil {
+		return err
 	}
 
-	config := attachConfig{maxChannelsPerConnection: DefaultMaxChannelsPerConnection}
-	for _, option := range attachOptions {
-		if option == nil {
-			return invalidSIPSourceInstall("AttachOption must be non-nil")
-		}
-		if err := option(&config); err != nil {
-			return err
-		}
+	config, err := resolveAttachConfig(attachOptions)
+	if err != nil {
+		return err
 	}
 
 	options := append([]sip.ConnOption(nil), connOptions...)
@@ -122,6 +115,49 @@ func AttachSIPSource(
 	return nil
 }
 
+func checkConnOptions(options []sip.ConnOption) error {
+	for _, option := range options {
+		if option == nil {
+			return invalidSIPSourceInstall("ConnOption must be non-nil")
+		}
+	}
+	return nil
+}
+
+func resolveAttachConfig(options []AttachOption) (attachConfig, error) {
+	config := attachConfig{maxChannelsPerConnection: DefaultMaxChannelsPerConnection}
+	for _, option := range options {
+		if option == nil {
+			return config, invalidSIPSourceInstall("AttachOption must be non-nil")
+		}
+		if err := option(&config); err != nil {
+			return config, err
+		}
+	}
+	return config, nil
+}
+
+// parseForwardRequest decodes the direct-tcpip payload and applies the server's
+// LocalPortForwardingCallback. It rejects the channel itself and reports false
+// when the request is invalid or prohibited.
+func parseForwardRequest(
+	server *gliderssh.Server,
+	newChannel gossh.NewChannel,
+	sshCtx gliderssh.Context,
+) (sipForwardChannelData, bool) {
+	var destination sipForwardChannelData
+	if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
+		_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
+		return destination, false
+	}
+	callback := server.LocalPortForwardingCallback
+	if callback != nil && !callback(sshCtx, destination.DestAddr, destination.DestPort) {
+		_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
+		return destination, false
+	}
+	return destination, true
+}
+
 func sipChannelHandler(
 	attachCtx context.Context,
 	sourceFactory SIPSourceFactory,
@@ -129,18 +165,13 @@ func sipChannelHandler(
 	maxChannels int,
 ) gliderssh.ChannelHandler {
 	return func(server *gliderssh.Server, _ *gossh.ServerConn, newChannel gossh.NewChannel, sshCtx gliderssh.Context) {
-		var destination sipForwardChannelData
-		if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
-			_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
-			return
-		}
-		if server.LocalPortForwardingCallback != nil && !server.LocalPortForwardingCallback(sshCtx, destination.DestAddr, destination.DestPort) {
-			_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
+		destination, ok := parseForwardRequest(server, newChannel, sshCtx)
+		if !ok {
 			return
 		}
 
-		releaseChannel, ok := acquireChannel(sshCtx, maxChannels)
-		if !ok {
+		releaseChannel, acquired := acquireChannel(sshCtx, maxChannels)
+		if !acquired {
 			_ = newChannel.Reject(gossh.ResourceShortage, "too many channels")
 			return
 		}

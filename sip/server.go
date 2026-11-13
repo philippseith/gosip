@@ -46,19 +46,7 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				// A closed listener never recovers. Other errors (for example
-				// EMFILE under connection pressure) are retried with a
-				// growing delay, like net/http does, instead of spinning.
-				if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-					return
-				}
-				retryDelay = nextAcceptRetryDelay(retryDelay)
-				logger.Printf("accept: %v; retrying in %v", err, retryDelay)
-				timer := time.NewTimer(retryDelay)
-				select {
-				case <-timer.C:
-				case <-ctx.Done():
-					timer.Stop()
+				if !waitAcceptRetry(ctx, err, &retryDelay) {
 					return
 				}
 				continue
@@ -87,6 +75,26 @@ const (
 	minAcceptRetryDelay = 5 * time.Millisecond
 	maxAcceptRetryDelay = time.Second
 )
+
+// waitAcceptRetry handles an Accept error. A closed listener never recovers.
+// Other errors (for example EMFILE under connection pressure) are retried after
+// a growing delay, like net/http does, instead of spinning. It reports false
+// when Serve has to stop.
+func waitAcceptRetry(ctx context.Context, err error, delay *time.Duration) bool {
+	if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+		return false
+	}
+	*delay = nextAcceptRetryDelay(*delay)
+	logger.Printf("accept: %v; retrying in %v", err, *delay)
+	timer := time.NewTimer(*delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
 
 // nextAcceptRetryDelay doubles the delay between failing Accept calls, from 5 ms up to 1 s.
 func nextAcceptRetryDelay(delay time.Duration) time.Duration {

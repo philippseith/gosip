@@ -298,8 +298,8 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
 		return err
 	}
-	u16slaveIndex := uint16(slaveIndex)
-	u16slaveExtension := uint16(slaveExtension)
+	u16slaveIndex := uint16(slaveIndex)         //nolint:gosec // checked by checkSlaveAddress
+	u16slaveExtension := uint16(slaveExtension) //nolint:gosec // checked by checkSlaveAddress
 	if len(data) > 0xFFFF {
 		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
 	}
