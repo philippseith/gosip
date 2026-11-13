@@ -418,16 +418,20 @@ func (c *conn) sendRequest(ctx context.Context, pdu PDU) <-chan func(PDU) error 
 	return req.ch
 }
 
-func (c *conn) transactionAllowed() chan struct{} {
+// transactionAllowed returns the channel holding the free transaction slots
+// and the channel that is closed when the connection is torn down.
+func (c *conn) transactionAllowed() (ch, closed chan struct{}) {
 	c.mxState.RLock()
 	defer c.mxState.RUnlock()
 
-	return c.concurrentTransactionLimitCh
+	return c.concurrentTransactionLimitCh, c.closedCh
 }
 
-func (c *conn) transactionStarted() chan struct{} {
+// transactionStarted returns the channel signaling started transactions and
+// the channel that is closed when the connection is torn down.
+func (c *conn) transactionStarted() (ch, closed chan struct{}) {
 	c.mxState.RLock()
 	defer c.mxState.RUnlock()
 
-	return c.transactionStartedCh
+	return c.transactionStartedCh, c.closedCh
 }

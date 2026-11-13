@@ -84,14 +84,10 @@ func (c *conn) cleanUp() (err error) {
 	if c.reqCh != nil {
 		c.reqCh = nil
 	}
-	if c.transactionStartedCh != nil {
-		close(c.transactionStartedCh)
-		c.transactionStartedCh = nil
-	}
-	if c.concurrentTransactionLimitCh != nil {
-		close(c.concurrentTransactionLimitCh)
-		c.concurrentTransactionLimitCh = nil
-	}
+	// The transaction channels are not closed: a loop that fetched one and is
+	// about to send on it would panic. closedCh wakes the loops up instead.
+	c.transactionStartedCh = nil
+	c.concurrentTransactionLimitCh = nil
 	if c.closedCh != nil {
 		close(c.closedCh)
 		c.closedCh = nil

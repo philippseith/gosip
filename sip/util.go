@@ -2,27 +2,37 @@ package sip
 
 import "github.com/joomcode/errorx"
 
-func signal(getChan func() chan struct{}) error {
-	ch := getChan()
+// signal sends a token on the channel returned by getChan. It gives up with
+// ErrorClosed when the connection is torn down. The channel itself is never
+// closed, because a send racing with a close of the channel would panic.
+func signal(getChan func() (ch, closed chan struct{})) error {
+	ch, closed := getChan()
 
 	if ch == nil {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	ch <- struct{}{}
-	return nil
+	select {
+	case ch <- struct{}{}:
+		return nil
+	case <-closed:
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
 }
 
-func wait(getChan func() chan struct{}) error {
-	ch := getChan()
+// wait receives a token from the channel returned by getChan. It gives up with
+// ErrorClosed when the connection is torn down.
+func wait(getChan func() (ch, closed chan struct{})) error {
+	ch, closed := getChan()
 
 	if ch == nil {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	_, ok := <-ch
-	if !ok {
+	select {
+	case <-ch:
+		return nil
+	case <-closed:
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	return nil
 }
 
 func mapChan[T any, V any](chT <-chan T, mapFunc func(T) V, capacity int) <-chan V {
