@@ -242,7 +242,8 @@ func TestSSHAttachContextCancelEndsChannels(t *testing.T) {
 
 // Measures the cost of open channels. Every channel owns a net.Pipe, a Serve
 // accept loop and two io.Copy goroutines; the 64 connection cap of sip.Serve is
-// per channel (per listener) and therefore does not bound the SSH connection.
+// per channel (per listener), so only the per-connection channel limit bounds
+// what one SSH connection can cost.
 func TestSSHChannelFloodCost(t *testing.T) {
 	if testing.Short() {
 		t.Skip("resource measurement")
