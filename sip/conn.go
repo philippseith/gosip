@@ -112,7 +112,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	sendRecvCtx := c.startLoops()
 
 	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck
-		_ = c.cleanUp()
+		_ = c.Close()
 		return nil, err
 	}
 
