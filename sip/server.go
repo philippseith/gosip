@@ -268,7 +268,14 @@ func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser,
 	return err
 }
 
+// writeWithHeader writes a response. The peer has to accept it within the busy
+// timeout; a peer that sends requests but never reads the responses would
+// otherwise block this connection (and its slot in the connection limit) forever.
 func (c connServer) writeWithHeader(pdu PDU, transactionID uint32) error {
+	deadline := time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
 	header := Header{TransactionID: transactionID, MessageType: pdu.MessageType()}
 	if err := header.Write(c.conn); err != nil {
 		return err
