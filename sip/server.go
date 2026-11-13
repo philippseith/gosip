@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -43,15 +42,28 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		})
 		defer stop()
 
+		var retryDelay time.Duration
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				if ctx.Err() != nil {
+				// A closed listener never recovers. Other errors (for example
+				// EMFILE under connection pressure) are retried with a
+				// growing delay, like net/http does, instead of spinning.
+				if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
 					return
 				}
-				log.Printf("accept: %+v", err)
+				retryDelay = nextAcceptRetryDelay(retryDelay)
+				logger.Printf("accept: %v; retrying in %v", err, retryDelay)
+				timer := time.NewTimer(retryDelay)
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
 				continue
 			}
+			retryDelay = 0
 			server := *serverTemplate
 			server.conn = conn
 			select {
@@ -69,6 +81,19 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		}
 	}()
 	return nil
+}
+
+const (
+	minAcceptRetryDelay = 5 * time.Millisecond
+	maxAcceptRetryDelay = time.Second
+)
+
+// nextAcceptRetryDelay doubles the delay between failing Accept calls, from 5 ms up to 1 s.
+func nextAcceptRetryDelay(delay time.Duration) time.Duration {
+	if delay == 0 {
+		return minAcceptRetryDelay
+	}
+	return min(delay*2, maxAcceptRetryDelay)
 }
 
 type connServer struct {
