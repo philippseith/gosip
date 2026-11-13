@@ -1,23 +1,34 @@
 # AGENTS.md
 
-Go implementation of S/IP (Sercos Internet Protocol). Single module, no Makefile, no CI, no codegen.
+Go implementation of S/IP (Sercos Internet Protocol). Two Go modules: the root library and the nested `cmd/gosip` CLI module, joined by `go.work`. No Makefile, no CI, no codegen.
 
 ## Commands
 
 ```sh
+# Root library module
 go build ./...
 go vet ./...
-golangci-lint run ./...   # skips *_test.go files (run: tests: false in .golangci.yaml)
+golangci-lint run ./...
+GOWORK=off go mod tidy
+
+# Nested CLI module
+(cd cmd/gosip && go build ./...)
+(cd cmd/gosip && go vet ./...)
+(cd cmd/gosip && golangci-lint run ./...)
+(cd cmd/gosip && GOWORK=off go mod tidy)
+
 gofmt -w .
-go mod tidy
 govulncheck ./...
 ```
+
+The root `.golangci.yaml` applies to both modules; `golangci-lint` walks up to find it, so no copy is needed. The CLI module's root-library requirement must point to a published revision containing its nested-module boundary before running its `GOWORK=off go mod tidy` command.
 
 Run tests — **read the test prerequisites below first**:
 
 ```sh
-go test ./...             # both packages; sip/ requires a live device
+go test ./...             # root module; sip/ requires a live device
 go test ./sip_test/...    # safe, fully in-memory
+(cd cmd/gosip && go test ./...) # CLI; fully in-memory
 go test ./sip -run <Name> # hardware tests; needs test_config.json
 ```
 

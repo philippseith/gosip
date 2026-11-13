@@ -1,0 +1,8 @@
+{
+  "mcp": {
+    "gosip": {
+      "type": "local",
+      "command": ["go", "run", "./cmd/gosip", "mcp"]
+    }
+  }
+}

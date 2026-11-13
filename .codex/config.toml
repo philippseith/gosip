@@ -1,0 +1,3 @@
+[mcp_servers.gosip]
+command = "go"
+args = ["run", "./cmd/gosip", "mcp"]
