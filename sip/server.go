@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"time"
 
@@ -43,15 +42,16 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		})
 		defer stop()
 
+		var retryDelay time.Duration
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
-				if ctx.Err() != nil {
+				if !waitAcceptRetry(ctx, err, &retryDelay) {
 					return
 				}
-				log.Printf("accept: %+v", err)
 				continue
 			}
+			retryDelay = 0
 			server := *serverTemplate
 			server.conn = conn
 			select {
@@ -69,6 +69,39 @@ func Serve(ctx context.Context, listener net.Listener, source SyncClient, option
 		}
 	}()
 	return nil
+}
+
+const (
+	minAcceptRetryDelay = 5 * time.Millisecond
+	maxAcceptRetryDelay = time.Second
+)
+
+// waitAcceptRetry handles an Accept error. A closed listener never recovers.
+// Other errors (for example EMFILE under connection pressure) are retried after
+// a growing delay, like net/http does, instead of spinning. It reports false
+// when Serve has to stop.
+func waitAcceptRetry(ctx context.Context, err error, delay *time.Duration) bool {
+	if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+		return false
+	}
+	*delay = nextAcceptRetryDelay(*delay)
+	logger.Printf("accept: %v; retrying in %v", err, *delay)
+	timer := time.NewTimer(*delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// nextAcceptRetryDelay doubles the delay between failing Accept calls, from 5 ms up to 1 s.
+func nextAcceptRetryDelay(delay time.Duration) time.Duration {
+	if delay == 0 {
+		return minAcceptRetryDelay
+	}
+	return min(delay*2, maxAcceptRetryDelay)
 }
 
 type connServer struct {
@@ -243,7 +276,14 @@ func (c connServer) parseAndReadRequestAndWriteResponse(conn io.ReadWriteCloser,
 	return err
 }
 
+// writeWithHeader writes a response. The peer has to accept it within the busy
+// timeout; a peer that sends requests but never reads the responses would
+// otherwise block this connection (and its slot in the connection limit) forever.
 func (c connServer) writeWithHeader(pdu PDU, transactionID uint32) error {
+	deadline := time.Now().Add(time.Duration(c.userBusyTimeout) * time.Millisecond)
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return errorx.EnsureStackTrace(err)
+	}
 	header := Header{TransactionID: transactionID, MessageType: pdu.MessageType()}
 	if err := header.Write(c.conn); err != nil {
 		return err

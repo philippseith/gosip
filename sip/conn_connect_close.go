@@ -84,16 +84,10 @@ func (c *conn) cleanUp() (err error) {
 	if c.reqCh != nil {
 		c.reqCh = nil
 	}
-	// The signaling channels are only dropped, never closed: sendLoop and
-	// receiveLoop may still be sending on a channel they fetched before. They
-	// are woken up by doneCh instead.
+	// The transaction channels are not closed: a loop that fetched one and is
+	// about to send on it would panic. closedCh wakes the loops up instead.
 	c.transactionStartedCh = nil
 	c.concurrentTransactionLimitCh = nil
-	select {
-	case <-c.doneCh:
-	default:
-		close(c.doneCh)
-	}
 	if c.closedCh != nil {
 		close(c.closedCh)
 		c.closedCh = nil

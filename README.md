@@ -188,6 +188,8 @@ Responses advertising larger values are rejected with an error.
 
 The caller configures host keys and authentication directly on `gliderssh.Server`. Authentication is optional to `AttachSIPSource`: gliderlabs permits unauthenticated SSH when no authentication handlers are configured. Use that only on a trusted network or listener. The factory can reject destinations, but `TargetRequest.Username` is not an authenticated identity unless server authentication is configured.
 
+One SSH connection may hold at most `ext.DefaultMaxChannelsPerConnection` (32) open S/IP channels; further `direct-tcpip` channels are rejected with `ResourceShortage` until one closes. Every channel runs its own `sip.Serve` loop, so the `sip.WithMaxConnections` limit does not bound the connection as a whole. Pass `ext.WithMaxChannelsPerConnection(n)` as the last argument of `AttachSIPSource` to change the limit. `gliderssh.Server.IdleTimeout` and `MaxTimeout` are zero (unlimited) by default; set them if idle SSH connections must not live forever.
+
 ```go
 package main
 

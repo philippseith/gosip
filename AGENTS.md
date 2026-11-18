@@ -62,12 +62,6 @@ invisible to the test runner. This is the project's way of parking hardware-depe
 incomplete tests. **Do not rename them** to re-enable — add `t.Skip()` instead if you need
 a proper skip.
 
-## Pre-built test binaries
-
-`sip.test` and `sip_test.test` in the repo root are committed pre-built binaries for direct
-execution against hardware. `.gitignore` lists `*.test` but these are intentionally kept.
-Do not delete them.
-
 ## Code conventions
 
 - **Error wrapping:** use `errorx.EnsureStackTrace(err)` / `errorx.EnhanceStackTrace(err, ...)`,

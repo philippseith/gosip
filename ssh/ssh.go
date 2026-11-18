@@ -18,6 +18,35 @@ import (
 
 var ErrInvalidSIPMuxInstall = errors.New("invalid S/IP mux installation")
 
+// DefaultMaxChannelsPerConnection is the number of concurrently open S/IP
+// channels one SSH connection may hold unless WithMaxChannelsPerConnection
+// says otherwise.
+const DefaultMaxChannelsPerConnection = 32
+
+// AttachOption configures AttachSIPSource.
+type AttachOption func(*attachConfig) error
+
+type attachConfig struct {
+	maxChannelsPerConnection int
+}
+
+// WithMaxChannelsPerConnection limits how many direct-tcpip channels one SSH
+// connection may have open at the same time. Every channel runs its own
+// sip.Serve loop (with its own connection limit) and bridge, which costs five
+// goroutines, so without this limit a single SSH connection can open an
+// unbounded number of them. Channels beyond the limit are rejected with
+// ResourceShortage and the limit is released when a channel closes. n must be
+// greater than 0. The default is DefaultMaxChannelsPerConnection.
+func WithMaxChannelsPerConnection(n int) AttachOption {
+	return func(c *attachConfig) error {
+		if n < 1 {
+			return invalidSIPSourceInstall("max channels per connection must be greater than 0")
+		}
+		c.maxChannelsPerConnection = n
+		return nil
+	}
+}
+
 // TargetRequest identifies an SSH client's requested direct-tcpip destination.
 type TargetRequest struct {
 	Username string
@@ -43,11 +72,15 @@ type SIPSourceFactory func(ctx context.Context, target TargetRequest) (sip.SyncC
 // LocalPortForwardingCallback remains an additional filter. Other handlers are
 // preserved; a pre-existing direct-tcpip handler is rejected. Call
 // AttachSIPSource before server.Serve.
+//
+// The number of open channels per SSH connection is limited, see
+// WithMaxChannelsPerConnection.
 func AttachSIPSource(
 	ctx context.Context,
 	server *gliderssh.Server,
 	sourceFactory SIPSourceFactory,
 	connOptions []sip.ConnOption,
+	attachOptions ...AttachOption,
 ) error {
 	if ctx == nil {
 		return invalidSIPSourceInstall("context must be non-nil")
@@ -64,10 +97,13 @@ func AttachSIPSource(
 	if server.ChannelHandlers != nil && server.ChannelHandlers["direct-tcpip"] != nil {
 		return invalidSIPSourceInstall("direct-tcpip already has a channel handler")
 	}
-	for _, option := range connOptions {
-		if option == nil {
-			return invalidSIPSourceInstall("ConnOption must be non-nil")
-		}
+	if err := checkConnOptions(connOptions); err != nil {
+		return err
+	}
+
+	config, err := resolveAttachConfig(attachOptions)
+	if err != nil {
+		return err
 	}
 
 	options := append([]sip.ConnOption(nil), connOptions...)
@@ -75,26 +111,70 @@ func AttachSIPSource(
 		server.ChannelHandlers = make(map[string]gliderssh.ChannelHandler, len(gliderssh.DefaultChannelHandlers)+1)
 		maps.Copy(server.ChannelHandlers, gliderssh.DefaultChannelHandlers)
 	}
-	server.ChannelHandlers["direct-tcpip"] = sipChannelHandler(ctx, sourceFactory, options)
+	server.ChannelHandlers["direct-tcpip"] = sipChannelHandler(ctx, sourceFactory, options, config.maxChannelsPerConnection)
 	return nil
+}
+
+func checkConnOptions(options []sip.ConnOption) error {
+	for _, option := range options {
+		if option == nil {
+			return invalidSIPSourceInstall("ConnOption must be non-nil")
+		}
+	}
+	return nil
+}
+
+func resolveAttachConfig(options []AttachOption) (attachConfig, error) {
+	config := attachConfig{maxChannelsPerConnection: DefaultMaxChannelsPerConnection}
+	for _, option := range options {
+		if option == nil {
+			return config, invalidSIPSourceInstall("AttachOption must be non-nil")
+		}
+		if err := option(&config); err != nil {
+			return config, err
+		}
+	}
+	return config, nil
+}
+
+// parseForwardRequest decodes the direct-tcpip payload and applies the server's
+// LocalPortForwardingCallback. It rejects the channel itself and reports false
+// when the request is invalid or prohibited.
+func parseForwardRequest(
+	server *gliderssh.Server,
+	newChannel gossh.NewChannel,
+	sshCtx gliderssh.Context,
+) (sipForwardChannelData, bool) {
+	var destination sipForwardChannelData
+	if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
+		_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
+		return destination, false
+	}
+	callback := server.LocalPortForwardingCallback
+	if callback != nil && !callback(sshCtx, destination.DestAddr, destination.DestPort) {
+		_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
+		return destination, false
+	}
+	return destination, true
 }
 
 func sipChannelHandler(
 	attachCtx context.Context,
 	sourceFactory SIPSourceFactory,
 	connOptions []sip.ConnOption,
+	maxChannels int,
 ) gliderssh.ChannelHandler {
 	return func(server *gliderssh.Server, _ *gossh.ServerConn, newChannel gossh.NewChannel, sshCtx gliderssh.Context) {
-		var destination sipForwardChannelData
-		if err := gossh.Unmarshal(newChannel.ExtraData(), &destination); err != nil {
-			_ = newChannel.Reject(gossh.ConnectionFailed, "invalid forwarding request")
-			return
-		}
-		if server.LocalPortForwardingCallback != nil && !server.LocalPortForwardingCallback(sshCtx, destination.DestAddr, destination.DestPort) {
-			_ = newChannel.Reject(gossh.Prohibited, "port forwarding is disabled")
+		destination, ok := parseForwardRequest(server, newChannel, sshCtx)
+		if !ok {
 			return
 		}
 
+		releaseChannel, acquired := acquireChannel(sshCtx, maxChannels)
+		if !acquired {
+			_ = newChannel.Reject(gossh.ResourceShortage, "too many channels")
+			return
+		}
 		serveCtx, cancel := context.WithCancel(sshCtx)
 		stopAttachCancel := context.AfterFunc(attachCtx, cancel)
 		listener := newSIPChannelListener()
@@ -102,6 +182,7 @@ func sipChannelHandler(
 			stopAttachCancel()
 			cancel()
 			_ = listener.Close()
+			releaseChannel()
 		}
 		target := TargetRequest{Username: sshCtx.User(), Host: destination.DestAddr, Port: destination.DestPort}
 		source, err := sourceFactory(serveCtx, target)
@@ -138,6 +219,33 @@ func sipChannelHandler(
 		}
 		bridgeSSHChannel(channel, bridgeConn, closeService)
 	}
+}
+
+type channelCountKey struct{}
+
+// acquireChannel counts one open channel for the SSH connection of ctx. It
+// reports false when the connection already has limit channels open. The
+// returned release function is idempotent.
+func acquireChannel(ctx gliderssh.Context, limit int) (release func(), ok bool) {
+	ctx.Lock()
+	defer ctx.Unlock()
+	count, _ := ctx.Value(channelCountKey{}).(*int)
+	if count == nil {
+		count = new(int)
+		ctx.SetValue(channelCountKey{}, count)
+	}
+	if *count >= limit {
+		return nil, false
+	}
+	*count++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			ctx.Lock()
+			defer ctx.Unlock()
+			*count--
+		})
+	}, true
 }
 
 type sipChannelListener struct {

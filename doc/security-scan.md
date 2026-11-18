@@ -41,7 +41,7 @@ This document combines two assessments of `gosip`: an automated repository scan 
 - Coverage: **partial**
 - Disposition: scan findings have not been independently exploit-validated.
 
-The scan reviewed production sources, tests, documentation, configuration, histories/cache/IDE data, and module manifests. Variable-length PDU bounds were reviewed. It did not run builds, tests, lint, dynamic exploit checks, or an external dependency advisory lookup. The committed binaries `sip.test` and `sip_test.test` could not be inspected or verified against source; the scan left them as follow-up coverage.
+The scan reviewed production sources, tests, documentation, configuration, histories/cache/IDE data, and module manifests. Variable-length PDU bounds were reviewed. It did not run builds, tests, lint, dynamic exploit checks, or an external dependency advisory lookup. The untracked local build artifacts `sip.test` and `sip_test.test` were not inspected; they were later inspected (see `doc/security-review-2.md`) and deleted.
 
 A separate `govulncheck ./...` attempt during the scan did not produce a vulnerability result: the installed scanner was built with Go 1.21 source-processing packages and failed against the Go 1.27 `go list`/standard library.
 
@@ -254,9 +254,8 @@ A separate `govulncheck ./...` attempt during the scan did not produce a vulnera
 
 1. Which downstream applications bind `sip.Serve` to untrusted interfaces, and do their `SyncClient` implementations enforce read/write authorization? (finding 3)
 2. Do downstream applications use `RequestOption` metadata for per-caller authorization when calls pass through `NewMux`? If so, verify that coalescing cannot cross those caller identities. (finding 5)
-3. Can the committed `sip.test` and `sip_test.test` binaries be provenance-checked or inspected with an available binary-aware tool? Do not assume they match the reviewed source.
-4. The scan could not run `govulncheck`; the manual review reports a successful run with no called vulnerabilities and one unreachable advisory (GO-2026-5932). Re-run it with a build compatible with the installed Go toolchain to confirm the current dependency status.
-5. Is the Sercos attribute layout (bit 23 reserved) confirmed in the specification? (finding 16)
+3. The scan could not run `govulncheck`; the manual review reports a successful run with no called vulnerabilities and one unreachable advisory (GO-2026-5932). Re-run it with a build compatible with the installed Go toolchain to confirm the current dependency status.
+4. Is the Sercos attribute layout (bit 23 reserved) confirmed in the specification? (finding 16)
 
 ## Changes since the original documents
 

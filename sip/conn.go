@@ -112,7 +112,7 @@ func dial(ctx context.Context, network, address string, options ...ConnOption) (
 	sendRecvCtx := c.startLoops()
 
 	if err := c.connect(dialOpts.dialCtx, sendRecvCtx); err != nil { // nolint:contextcheck
-		_ = c.cleanUp()
+		_ = c.Close()
 		return nil, err
 	}
 
@@ -158,7 +158,6 @@ func newConn(netConn io.ReadWriteCloser, address string, options []ConnOption) (
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
 		closedCh:             make(chan struct{}),
-		doneCh:               make(chan struct{}),
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
@@ -260,38 +259,47 @@ func (c *conn) Ping(ctx context.Context) error {
 }
 
 func (c *conn) ReadEverything(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadEverythingResponse, error) {
+	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
+		return ReadEverythingResponse{}, err
+	}
 	req, resp := newReadEverythingPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadOnlyData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadOnlyDataResponse, error) {
+	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
+		return ReadOnlyDataResponse{}, err
+	}
 	req, resp := newReadOnlyDataPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDescription(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDescriptionResponse, error) {
+	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
+		return ReadDescriptionResponse{}, err
+	}
 	req, resp := newReadDescriptionPDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) ReadDataState(ctx context.Context, slaveIndex, slaveExtension int, idn uint32) (ReadDataStateResponse, error) {
+	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
+		return ReadDataStateResponse{}, err
+	}
 	req, resp := newReadDataStatePDUs(slaveIndex, slaveExtension, idn)
 	err := sendRequestWaitForResponseAndRead(ctx, c, req, resp)
 	return *resp, wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
 }
 
 func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, idn uint32, data []byte) error {
-	if slaveIndex < 0 || slaveIndex > 0xFFFF {
-		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	if err := checkSlaveAddress(slaveIndex, slaveExtension); err != nil {
+		return err
 	}
-	u16slaveIndex := uint16(slaveIndex)
-	if slaveExtension < 0 || slaveExtension > 0xFFFF {
-		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
-	}
-	u16slaveExtension := uint16(slaveExtension)
+	u16slaveIndex := uint16(slaveIndex)         //nolint:gosec // checked by checkSlaveAddress
+	u16slaveExtension := uint16(slaveExtension) //nolint:gosec // checked by checkSlaveAddress
 	if len(data) > 0xFFFF {
 		return errorx.EnsureStackTrace(fmt.Errorf("data length out of range [0-65535]: %v", len(data)))
 	}
@@ -307,6 +315,19 @@ func (c *conn) WriteData(ctx context.Context, slaveIndex, slaveExtension int, id
 		Data: data,
 	}, &WriteDataResponse{})
 	return wrapErrorWithRequestInfo(err, slaveIndex, slaveExtension, idn)
+}
+
+// checkSlaveAddress rejects slave indexes and extensions that do not fit the
+// 16 bit fields of the PDU; they would otherwise be silently truncated and
+// address a different slave.
+func checkSlaveAddress(slaveIndex, slaveExtension int) error {
+	if slaveIndex < 0 || slaveIndex > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveIndex out of range [0-65535]: %v", slaveIndex))
+	}
+	if slaveExtension < 0 || slaveExtension > 0xFFFF {
+		return errorx.EnsureStackTrace(fmt.Errorf("slaveExtension out of range [0-65535]: %v", slaveExtension))
+	}
+	return nil
 }
 
 func wrapErrorWithRequestInfo(err error, slaveIndex, slaveExtension int, idn uint32) error {

@@ -3,10 +3,12 @@ package sip_test
 import (
 	"errors"
 	"net"
+	"sync"
 )
 
 type Listener struct {
 	state       chan struct{}
+	closeOnce   sync.Once
 	connections chan net.Conn
 }
 
@@ -17,8 +19,10 @@ func NewListener() *Listener {
 	}
 }
 
+// Close is idempotent: sip.Serve closes its listener when its context is
+// canceled, which races with a Close call by the test.
 func (l *Listener) Close() error {
-	close(l.state)
+	l.closeOnce.Do(func() { close(l.state) })
 	return nil
 }
 
