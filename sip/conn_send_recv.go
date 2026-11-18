@@ -28,7 +28,7 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 				if !ok {
 					return errorx.EnsureStackTrace(ErrorClosed)
 				}
-				if err := wait(c.transactionAllowed); err != nil {
+				if err := wait(c.doneCh, c.transactionAllowed); err != nil {
 					return err
 				}
 				if err := c.send(req); err != nil {
@@ -36,7 +36,7 @@ func (c *conn) sendLoop(ctx context.Context, cancel context.CancelCauseFunc) {
 					return err
 				}
 				// Inform receiveLoop there's a new transaction initiated
-				if err := signal(c.transactionStarted); err != nil {
+				if err := signal(c.doneCh, c.transactionStarted); err != nil {
 					return err
 				}
 			}
@@ -59,7 +59,7 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 				return errorx.EnsureStackTrace(context.Cause(ctx))
 			default:
 				// Wait for an initiated transaction
-				if err := wait(c.transactionStarted); err != nil {
+				if err := wait(c.doneCh, c.transactionStarted); err != nil {
 					return err
 				}
 				if err := c.receiveAndDispatch(); err != nil {
@@ -67,7 +67,7 @@ func (c *conn) receiveLoop(ctx context.Context, cancel context.CancelCauseFunc) 
 					return err
 				}
 				// decrease the number of currently running req/resp pairs
-				if err := signal(c.transactionAllowed); err != nil {
+				if err := signal(c.doneCh, c.transactionAllowed); err != nil {
 					return err
 				}
 			}

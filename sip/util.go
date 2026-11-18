@@ -2,27 +2,37 @@ package sip
 
 import "github.com/joomcode/errorx"
 
-func signal(getChan func() chan struct{}) error {
+// signal sends on the channel returned by getChan. It returns ErrorClosed when
+// the channel is gone or done is closed. The channel itself is never closed, so
+// the send cannot panic.
+func signal(done <-chan struct{}, getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	ch <- struct{}{}
-	return nil
+	select {
+	case ch <- struct{}{}:
+		return nil
+	case <-done:
+		return errorx.EnsureStackTrace(ErrorClosed)
+	}
 }
 
-func wait(getChan func() chan struct{}) error {
+// wait receives from the channel returned by getChan. It returns ErrorClosed
+// when the channel is gone or done is closed.
+func wait(done <-chan struct{}, getChan func() chan struct{}) error {
 	ch := getChan()
 
 	if ch == nil {
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	_, ok := <-ch
-	if !ok {
+	select {
+	case <-ch:
+		return nil
+	case <-done:
 		return errorx.EnsureStackTrace(ErrorClosed)
 	}
-	return nil
 }
 
 func mapChan[T any, V any](chT <-chan T, mapFunc func(T) V, capacity int) <-chan V {

@@ -20,6 +20,7 @@ type conn struct {
 	reqChWaitCount       int32 // number of goroutines waiting for a response at reqCh
 	transactionStartedCh chan struct{}
 	closedCh             chan struct{} // closed (not nilled) when the connection is torn down
+	doneCh               chan struct{} // closed once by cleanUp, never nilled; wakes up the loops blocked on the signaling channels
 
 	respChans map[uint32]chan func(PDU) error
 	mxRC      sync.RWMutex

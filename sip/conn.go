@@ -158,6 +158,7 @@ func newConn(netConn io.ReadWriteCloser, address string, options []ConnOption) (
 		reqCh:                make(chan request),
 		transactionStartedCh: make(chan struct{}, 5000), // Practically infinite queue size, no memory allocation because of struct{} type
 		closedCh:             make(chan struct{}),
+		doneCh:               make(chan struct{}),
 		respChans:            map[uint32]chan func(PDU) error{},
 	}
 	// Default: Allow practically infinite parallel transactions
